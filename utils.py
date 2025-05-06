@@ -165,7 +165,7 @@ def sync_browser_logs_to_server():
 
     for key, value in logs_dict.items():
         try:
-            parts = key[len('sslog_'):].rsplit('_', 1)  # ['lecture name', 'date_time.json']
+            parts = key[len('sslog_'):].split('__', 1)  # lecture, rest
             lecture = parts[0]
             filename = parts[1]
         except Exception:

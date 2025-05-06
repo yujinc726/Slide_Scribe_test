@@ -57,7 +57,7 @@ def save_records_to_json(lecture_name, records):
 
         # also save to browser localStorage so that it survives container reboot
         try:
-            storage_key = f"sslog_{lecture_name}_{date}_{timestamp}.json"
+            storage_key = f"sslog_{lecture_name}__{date}_{timestamp}.json"
             utils._ls_set_item(storage_key, json_str)
         except Exception:
             pass
