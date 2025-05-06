@@ -58,10 +58,10 @@ def initialize_firebase():
             if 'firebase' in st.secrets:
                 st.write('test1')
                 cred = credentials.Certificate(st.secrets['firebase'])
+                st.write(cred)
                 
             else:
                 # For local development, use JSON file
-                st.write('test2')
                 cred = credentials.Certificate('slidescribe-firebase-adminsdk.json')
             firebase_admin.initialize_app(cred)
         except Exception as e:
