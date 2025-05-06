@@ -2,16 +2,10 @@ import pandas as pd
 import re
 from datetime import datetime
 import streamlit as st
-
-# Local-storage helpers
-from storage_utils import (
-    load_lecture_names,
-    get_existing_json_files,
-    load_records_from_json,
-)
-
-# os is kept only for basename/dirname helpers if needed in future
+import json
 import os
+
+from local_storage_utils import get_filenames as ls_get_filenames, load_records as ls_load_records
 
 def parse_srt_time(time_str):
     """SRT 및 CSV 시간 문자열을 초 단위로 변환"""
@@ -48,29 +42,68 @@ def read_srt_file(srt_content):
     
     return subtitles
 
-# ---------------------------------------------------------------------------
-# Helpers now backed by browser localStorage
-# ---------------------------------------------------------------------------
-
 def get_available_lectures():
-    """Return list of lecture names stored in localStorage."""
-    return load_lecture_names()
+    """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
+    timer_logs_dir = "timer_logs"
+    lectures = []
+    
+    if os.path.exists(timer_logs_dir):
+        for lecture_name in os.listdir(timer_logs_dir):
+            lecture_path = os.path.join(timer_logs_dir, lecture_name)
+            if os.path.isdir(lecture_path):
+                lectures.append(lecture_name)
+    
+    return lectures
 
 def get_json_files_for_lecture(lecture_name):
-    """Return mapping filename -> storage key for given lecture."""
-    keys = get_existing_json_files(lecture_name)
-    mapping = {os.path.basename(k): k for k in keys}
-    return mapping
+    """Return list of filenames from browser localStorage (preferred) or filesystem."""
+    files = ls_get_filenames(lecture_name)
+    if files:
+        return files
 
-def load_json_file(storage_key):
-    """Load records list stored under *storage_key* (browser localStorage)."""
-    return load_records_from_json(storage_key)
+    # fallback to legacy filesystem directory
+    timer_logs_dir = os.path.join("timer_logs", lecture_name)
+    json_files: list[str] = []
+    if os.path.exists(timer_logs_dir):
+        for file_name in os.listdir(timer_logs_dir):
+            if file_name.endswith(".json"):
+                json_files.append(file_name)
+    return json_files
+
+def load_json_file(lecture_name: str, filename: str):
+    """Load records from localStorage or fallback file path."""
+    try:
+        # first try localStorage
+        records = ls_load_records(lecture_name, filename)
+        if records:
+            return records
+    except Exception:
+        pass
+
+    # fallback to filesystem
+    json_path = os.path.join("timer_logs", lecture_name, filename)
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        st.error(f"JSON 파일 로드 중 오류: {e}")
+        return []
 
 def process_files(srt_file=None, json_path=None):
     """JSON과 SRT 파일을 처리하여 슬라이드별로 자막을 합쳐 데이터프레임 반환"""
     # 타이머 기록 읽기 (JSON 파일)
     if json_path:
-        records = load_json_file(json_path)
+        if isinstance(json_path, tuple):
+            lec, fname = json_path
+            records = load_json_file(lec, fname)
+        else:
+            # json_path is file system path
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    records = json.load(f)
+            except Exception as e:
+                st.error(f"JSON 파일 로드 중 오류: {e}")
+                return None
         df = pd.DataFrame(records)
     else:
         st.error("타이머 기록(JSON) 필요")
@@ -136,8 +169,7 @@ def srt_parser_tab():
             )
             
             if selected_lecture:
-                mapping = get_json_files_for_lecture(selected_lecture)
-                json_files = list(mapping.keys())
+                json_files = get_json_files_for_lecture(selected_lecture)
                 if not json_files:
                     st.info("타이머 기록이 없습니다.")
             else:
@@ -152,7 +184,7 @@ def srt_parser_tab():
                     disabled=not selected_lecture
                 )
                 if selected_json_file:
-                    json_path = mapping[selected_json_file]
+                    json_path = (selected_lecture, selected_json_file)
             else:
                 json_path = None
         else:
@@ -167,7 +199,17 @@ def srt_parser_tab():
                 st.error("JSON 파일을 선택해주세요.")
             else:
                 with st.spinner("Processing..."):
-                    st.session_state.result_df = process_files(srt_file, json_path)
+                    if isinstance(json_path, tuple):  # localStorage
+                        lec_name, fname = json_path
+                        # load records directly without writing file
+                        records_json = load_json_file(lec_name, fname)
+                        tmp_path = os.path.join("/tmp", fname)
+                        with open(tmp_path, "w", encoding="utf-8") as f:
+                            json.dump(records_json, f, ensure_ascii=False, indent=2)
+                        json_path_fs = tmp_path
+                    else:
+                        json_path_fs = json_path
+                    st.session_state.result_df = process_files(srt_file, json_path_fs)
     
     with col2:
         st.subheader("Parsed SRT")

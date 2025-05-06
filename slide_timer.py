@@ -1,32 +1,76 @@
 import streamlit as st
 from datetime import datetime, timedelta
+import json
+import os
 import pandas as pd
 import streamlit.components.v1 as components
+import glob
 
-# Local-storage backed helpers
-from storage_utils import (
-    load_lecture_names,
-    save_lecture_names,
-    save_records_to_json,
-    load_records_from_json,
-    get_existing_json_files,
+from local_storage_utils import (
+    save_records as ls_save_records,
+    get_filenames as ls_get_filenames,
+    load_records as ls_load_records,
 )
 
-# NOTE: The original code used os/glob/json for filesystem access.
-# These are no longer required after migrating to browser localStorage,
-# but we keep the imports if other parts of this file happen to use them
-# (e.g. os.path.basename). Remove if unused.
-import os
+def load_lecture_names():
+    """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
+    timer_logs_dir = "timer_logs"
+    lectures = []
+    
+    if os.path.exists(timer_logs_dir):
+        for lecture_name in os.listdir(timer_logs_dir):
+            lecture_path = os.path.join(timer_logs_dir, lecture_name)
+            if os.path.isdir(lecture_path):
+                lectures.append(lecture_name)
+    
+    return lectures
+
+def save_lecture_names(lecture_names):
+    """lecture_names.json에 강의 이름 목록 저장"""
+    lecture_names_file = "lecture_names.json"
+    try:
+        with open(lecture_names_file, 'w', encoding='utf-8') as f:
+            json.dump(lecture_names, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"강의 이름 저장 중 오류: {e}")
+
+def ensure_directory(directory):
+    """디렉토리가 존재하는지 확인하고 없으면 생성"""
+    if not os.path.exists(directory):
+        os.makedirs(directory)
 
 # ---------------------------------------------------------------------------
-# Legacy helpers still referenced elsewhere in the code.  For localStorage we
-# do not need to create directories on disk, but we keep a *no-op* version of
-# `ensure_directory` so that existing calls (if any) don't break.
+# Local-storage based persistence helpers
 # ---------------------------------------------------------------------------
 
-def ensure_directory(_directory: str):
-    """No-op once we moved to browser storage (kept for backward-compat)."""
-    return None
+def _build_filename() -> str:
+    """Return default filename used for a new log entry."""
+    date = datetime.now().strftime("%Y-%m-%d")
+    timestamp = datetime.now().strftime("%H%M%S")
+    return f"{date}_{timestamp}.json"
+
+def save_records_to_json(lecture_name: str, records):
+    """Persist records to browser localStorage and return filename."""
+    filename = _build_filename()
+    try:
+        ls_save_records(lecture_name, filename, records)
+        return filename
+    except Exception as exc:  # pragma: no cover
+        st.error(f"기록 저장 중 오류: {exc}")
+        return None
+
+def load_records_from_json(lecture_name: str, filename: str):
+    try:
+        return ls_load_records(lecture_name, filename)
+    except Exception as exc:  # pragma: no cover
+        st.error(f"JSON 기록 로드 중 오류: {exc}")
+        return []
+
+def get_existing_json_files(lecture_name):
+    """Return list of filenames for *lecture_name* from localStorage."""
+    if not lecture_name:
+        return []
+    return ls_get_filenames(lecture_name)
 
 def lecture_timer_tab():
     """Slide Timer 탭 구현"""
@@ -72,9 +116,9 @@ def lecture_timer_tab():
         if not st.session_state.lecture_names:
             st.info("Settings 탭에서 강의를 추가해주세요.")
         
-        # 기존 JSON 파일 선택
+        # 기존 JSON 파일 선택 (browser localStorage)
         json_files = get_existing_json_files(lecture_name)
-        json_options = ["새 기록 시작"] + [os.path.basename(f) for f in json_files]
+        json_options = ["새 기록 시작"] + json_files
         selected_json = st.selectbox(
             "기록 선택",
             json_options,
@@ -95,11 +139,11 @@ def lecture_timer_tab():
                 st.session_state.start_time_value = "00:00:00.000"
                 st.session_state.selected_json_file = None
             else:
-                file_path = json_files[selected_index - 1]
-                records = load_records_from_json(file_path)
+                filename_sel = json_files[selected_index - 1]
+                records = load_records_from_json(lecture_name, filename_sel)
                 if records:
                     st.session_state.records = records
-                    st.session_state.selected_json_file = file_path
+                    st.session_state.selected_json_file = filename_sel
                     # 마지막 슬라이드 번호 설정
                     last_slide = max([int(r["slide_number"]) for r in records], default=0)
                     st.session_state.slide_number = last_slide + 1
@@ -317,14 +361,14 @@ def lecture_timer_tab():
 
         # JSON 저장
         if st.button("기록 저장", use_container_width=True, disabled=not st.session_state.records):
-            json_file_path = save_records_to_json(
+            json_filename = save_records_to_json(
                 lecture_name,
                 st.session_state.records
             )
             
-            if json_file_path:
-                st.success(f"JSON 파일이 저장되었습니다: {json_file_path}")
-                st.session_state.selected_json_file = json_file_path
+            if json_filename:
+                st.success(f"기록이 저장되었습니다 (브라우저에 저장됨): {json_filename}")
+                st.session_state.selected_json_file = json_filename
 
     with right_col:
         # 기록된 시간 표시
