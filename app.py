@@ -52,8 +52,8 @@ st.markdown("""
 
 # Initialize S3 client
 s3_client = boto3.client('s3')
-BUCKET_NAME = 'slide-scribe-bucket'
-USERS_FILE = 'users.json'
+BUCKET_NAME = 'slide-scribe-data'
+USERS_FILE = 'credentials.json'
 
 # Helper functions for user authentication
 def load_users():
