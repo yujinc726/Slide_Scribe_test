@@ -222,8 +222,8 @@ def manage_lectures():
                     save_lecture_names(st.session_state.lecture_names)
                     # 디렉토리 생성
                     ensure_directory(os.path.join(utils.user_timer_logs_dir(), new_lecture))
-                    st.rerun()
                     st.success(f"강의가 추가되었습니다: {new_lecture}")
+                    #st.rerun()
                 else:
                     st.warning("이미 존재하는 강의 이름입니다.")
             else:
@@ -258,7 +258,7 @@ def manage_lectures():
                     st.session_state.lecture_names.remove(lecture)
                 save_lecture_names(st.session_state.lecture_names)
                 st.success(f"{len(selected_lectures)}개의 강의가 삭제되었습니다.")
-                st.rerun()
+                #st.rerun()
             else:
                 st.warning("삭제할 강의를 선택해주세요.")
 
