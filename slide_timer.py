@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import json
 import pandas as pd
 import streamlit.components.v1 as components
-from app import save_json_data, load_json_data
+from storage import save_json_data, load_json_data
 
 def load_lecture_names(user_id=None):
     """Load available lecture names from S3 or session state"""
