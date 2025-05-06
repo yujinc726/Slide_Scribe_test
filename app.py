@@ -1,7 +1,7 @@
 import streamlit as st
 import boto3
-import json
-from auth import save_json_to_s3, load_json_from_s3, login_page
+from s3_utils import save_json_to_s3, load_json_from_s3
+from auth import login_page
 from slide_timer import lecture_timer_tab
 from srt_parser import srt_parser_tab
 from settings import settings_tab
@@ -107,8 +107,11 @@ def main():
             settings_tab()
             
         # Save JSON data on tab interaction
-        if st.session_state.is_authenticated:
-            save_json_to_s3(st.session_state.user_id, st.session_state.json_data)
+        if st.session_state.is_authenticated and st.session_state.user_id:
+            try:
+                save_json_to_s3(st.session_state.user_id, st.session_state.json_data, 'data.json')
+            except Exception as e:
+                st.error(f"Error saving JSON data to S3: {e}")
         
     except Exception as e:
         st.error(f"Error in main function: {e}")
