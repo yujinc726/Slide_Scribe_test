@@ -154,7 +154,8 @@ def sync_browser_logs_to_server():
     data_json = streamlit_js_eval(js_expressions=js_collect, want_output=True, key="__collect_logs")
     # JS 컴포넌트는 첫 렌더에 빈 문자열을 돌려줄 수 있음 -> 한 틱 기다림
     if data_json is None or data_json == "":
-        st.stop()
+        st.session_state["__logs_synced__"] = True   # 아무 로그 없음으로 간주
+        return
 
     try:
         logs_dict = json.loads(data_json)
