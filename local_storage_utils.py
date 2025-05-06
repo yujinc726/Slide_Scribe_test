@@ -36,7 +36,13 @@ def _ls() -> "LocalStorage":
     """Return a **singleton** instance of LocalStorage."""
     global _local_storage
     if _local_storage is None:
-        _local_storage = LocalStorage()
+        # Disable serverRendering so values are *not* pushed to Streamlit
+        # session_state on the server, keeping them isolated per browser.
+        try:
+            _local_storage = LocalStorage(serverRendering=False)
+        except TypeError:
+            # older versions might not support the kwarg
+            _local_storage = LocalStorage()
     return _local_storage
 
 
