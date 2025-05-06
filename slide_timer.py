@@ -336,7 +336,6 @@ def lecture_timer_tab():
                 "slide_number": str(st.session_state.slide_number),
                 "start_time": start_time,
                 "end_time": current_time_str,
-                "notes -1
                 "notes": st.session_state.notes
             })
             
