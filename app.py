@@ -1,10 +1,12 @@
 import streamlit as st
 import boto3
-from s3_utils import save_json_to_s3, load_json_from_s3
-from auth import login_page
+from botocore.exceptions import ClientError
 from slide_timer import lecture_timer_tab
 from srt_parser import srt_parser_tab
 from settings import settings_tab
+import json
+import os
+import uuid
 
 # Streamlit page configuration
 st.set_page_config(
@@ -14,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS with shorter input fields
+# Custom CSS for styling
 st.markdown("""
 <style>
     .stTabs [data-baseweb="tab"] {
@@ -49,54 +51,142 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize S3 client
-s3_client = boto3.client(
-    's3',
-    aws_access_key_id=st.secrets.get("AWS_ACCESS_KEY_ID"),
-    aws_secret_access_key=st.secrets.get("AWS_SECRET_ACCESS_KEY"),
-    region_name=st.secrets.get("AWS_DEFAULT_REGION")
-)
-BUCKET_NAME = "slide-scribe-data"
+# Initialize DynamoDB client
+dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
+table_name = 'SlideScribeUsers'
+table = dynamodb.Table(table_name)
 
-def initialize_session_state():
-    """Initialize session state variables."""
+# Helper functions for user authentication
+def create_user(user_id, password):
+    try:
+        table.put_item(
+            Item={
+                'user_id': user_id,
+                'password': password
+            },
+            ConditionExpression='attribute_not_exists(user_id)'
+        )
+        return True
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            st.error("User ID already exists!")
+        else:
+            st.error(f"Error creating user: {e}")
+        return False
+
+def authenticate_user(user_id, password):
+    try:
+        response = table.get_item(Key={'user_id': user_id})
+        if 'Item' in response and response['Item']['password'] == password:
+            return True
+        return False
+    except ClientError as e:
+        st.error(f"Error authenticating user: {e}")
+        return False
+
+def get_json_storage_path(user_id=None):
+    if user_id:  # Logged-in user
+        user_folder = f"data/{user_id}"
+        os.makedirs(user_folder, exist_ok=True)
+        return user_folder
+    else:  # Non-member
+        return None  # JSON will be stored in session_state
+
+def save_json_data(data, filename, user_id=None):
+    if user_id:
+        storage_path = get_json_storage_path(user_id)
+        file_path = os.path.join(storage_path, filename)
+        with open(file_path, 'w') as f:
+            json.dump(data, f)
+    else:
+        # Store in session_state for non-members
+        if 'non_member_data' not in st.session_state:
+            st.session_state.non_member_data = {}
+        st.session_state.non_member_data[filename] = data
+
+def load_json_data(filename, user_id=None):
+    if user_id:
+        storage_path = get_json_storage_path(user_id)
+        file_path = os.path.join(storage_path, filename)
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                return json.load(f)
+        return None
+    else:
+        return st.session_state.non_member_data.get(filename) if 'non_member_data' in st.session_state else None
+
+def login_signup_page():
+    st.title("Slide Scribe - Login / Signup")
+    st.markdown("Made by 차유진")
+
+    # Initialize session state for login
     if 'user_id' not in st.session_state:
         st.session_state.user_id = None
-    if 'is_authenticated' not in st.session_state:
-        st.session_state.is_authenticated = False
-    if 'json_data' not in st.session_state:
-        st.session_state.json_data = {}
-    if 'result_df' not in st.session_state:
-        st.session_state.result_df = None
-    if 'active_tab' not in st.session_state:
-        st.session_state.active_tab = "SRT Parser"
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+
+    # Tabs for Login, Signup, Non-member access
+    login_tab, signup_tab, non_member_tab = st.tabs(["Login", "Signup", "Non-Member"])
+
+    with login_tab:
+        st.subheader("Login")
+        user_id = st.text_input("User ID", key="login_user_id")
+        password = st.text_input("Password", type="password", key="login_password")
+        if st.button("Login"):
+            if authenticate_user(user_id, password):
+                st.session_state.user_id = user_id
+                st.session_state.logged_in = True
+                st.success("Logged in successfully!")
+                st.rerun()
+            else:
+                st.error("Invalid User ID or Password")
+
+    with signup_tab:
+        st.subheader("Signup")
+        new_user_id = st.text_input("New User ID", key="signup_user_id")
+        new_password = st.text_input("New Password", type="password", key="signup_password")
+        confirm_password = st.text_input("Confirm Password", type="password", key="signup_confirm_password")
+        if st.button("Signup"):
+            if new_password == confirm_password:
+                if create_user(new_user_id, new_password):
+                    st.success("User created successfully! Please login.")
+            else:
+                st.error("Passwords do not match!")
+
+    with non_member_tab:
+        st.subheader("Non-Member Access")
+        if st.button("Continue as Non-Member"):
+            st.session_state.user_id = None
+            st.session_state.logged_in = True
+            st.success("Continuing as non-member")
+            st.rerun()
 
 def main():
     try:
-        initialize_session_state()
-        
-        # Show login page if not authenticated
-        if not st.session_state.is_authenticated and st.session_state.user_id != "guest":
-            login_page()
+        # Check if user is logged in
+        if 'logged_in' not in st.session_state or not st.session_state.logged_in:
+            login_signup_page()
             return
-        
-        # Main app interface
-        st.title('Slide Scribe')
-        st.markdown('Made by 차유진')
-        
+
+        # Initialize session state
+        if 'result_df' not in st.session_state:
+            st.session_state.result_df = None
+        if 'active_tab' not in st.session_state:
+            st.session_state.active_tab = "SRT Parser"
+
+        st.title("Slide Scribe")
+        st.markdown(f"Made by 차유진 | Logged in as: {st.session_state.user_id or 'Non-Member'}")
+
         # Logout button
-        col1, col2 = st.columns([9, 1])
-        with col2:
-            if st.session_state.is_authenticated or st.session_state.user_id == "guest":
-                if st.button("Logout"):
-                    st.session_state.user_id = None
-                    st.session_state.is_authenticated = False
-                    st.session_state.json_data = {}
-                    st.rerun()
-        
-        # Tabs
+        if st.button("Logout"):
+            st.session_state.user_id = None
+            st.session_state.logged_in = False
+            st.session_state.non_member_data = {}
+            st.rerun()
+
+        # Tabs for main app
         tab1, tab2, tab3 = st.tabs(["⏱️ Slide Timer", "📜 SRT Parser", "⚙️ Settings"])
-        
+
         with tab1:
             lecture_timer_tab()
         
@@ -105,14 +195,7 @@ def main():
             
         with tab3:
             settings_tab()
-            
-        # Save JSON data on tab interaction
-        if st.session_state.is_authenticated and st.session_state.user_id:
-            try:
-                save_json_to_s3(st.session_state.user_id, st.session_state.json_data, 'data.json')
-            except Exception as e:
-                st.error(f"Error saving JSON data to S3: {e}")
-        
+
     except Exception as e:
         st.error(f"Error in main function: {e}")
 
