@@ -32,27 +32,50 @@ def _obtain_user_id_from_browser() -> str:
         # local/scripts but not for real users.
         return str(uuid.uuid4())
 
-    # Single JS block: get existing or create new (using crypto.randomUUID) and return it
+    # Single JS block: try localStorage → cookie → generate UUID, then persist to both
     js_code = """
-(() => {
-  let uid = window.localStorage.getItem('slideScribe_user_id');
+(function() {
+  const KEY = 'slideScribe_user_id';
+
+  function getCookie(name) {
+    const m = document.cookie.match('(^|;)\\s*' + name + '=([^;]+)');
+    return m ? m.pop() : null;
+  }
+
+  let uid = window.localStorage.getItem(KEY) || getCookie(KEY);
+
   if (!uid) {
     if (window.crypto && window.crypto.randomUUID) {
       uid = window.crypto.randomUUID();
     } else {
       const s4 = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
-      uid = s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
+      uid = s4()+s4()+'-'+s4()+'-'+s4()+'-'+s4()+'-'+s4()+s4()+s4();
     }
-    window.localStorage.setItem('slideScribe_user_id', uid);
   }
+
+  // Persist to localStorage
+  try { window.localStorage.setItem(KEY, uid); } catch(e) {}
+
+  // Persist to cookie (10년 만료)
+  try {
+    const expires = new Date(); expires.setFullYear(expires.getFullYear() + 10);
+    let cookie = `${KEY}=${uid};expires=${expires.toUTCString()};path=/`;
+    const parts = window.location.hostname.split('.');
+    if (parts.length >= 3) { // e.g. xxx.streamlit.app
+      const rootDomain = '.' + parts.slice(-2).join('.');
+      cookie += `;domain=${rootDomain}`;
+    }
+    document.cookie = cookie;
+  } catch(e) {}
+
   return uid;
-})()
+})();
 """
 
-    user_id = streamlit_js_eval(js_expressions=js_code, want_output=True, key="__uid_block")
+    user_id = streamlit_js_eval(js_expressions=js_code, want_output=True, key="__uid_cookie_block")
 
-    # The component is async: it can return ''/None initially; wait until ready
     if not user_id:
+        # Component returns empty string on first render; wait one rerun
         st.stop()
 
     return user_id
