@@ -55,6 +55,7 @@ def initialize_firebase():
     if not firebase_admin._apps:
         try:
             # For Streamlit Cloud, use secrets
+            st.write(st.secrets)
             if 'firebase' in st.secrets:
                 st.write('test1')
                 cred = credentials.Certificate(st.secrets['firebase'])
