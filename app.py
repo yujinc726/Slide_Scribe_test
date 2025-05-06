@@ -6,7 +6,6 @@ from srt_parser import srt_parser_tab
 from settings import settings_tab
 import json
 import os
-import uuid
 
 # Streamlit page configuration
 st.set_page_config(
@@ -51,53 +50,58 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize DynamoDB client
-dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
-table_name = 'SlideScribeUsers'
-table = dynamodb.Table(table_name)
+# Initialize S3 client
+s3_client = boto3.client('s3')
+BUCKET_NAME = 'slide-scribe-bucket'
+USERS_FILE = 'users.json'
 
 # Helper functions for user authentication
-def create_user(user_id, password):
+def load_users():
     try:
-        table.put_item(
-            Item={
-                'user_id': user_id,
-                'password': password
-            },
-            ConditionExpression='attribute_not_exists(user_id)'
+        response = s3_client.get_object(Bucket=BUCKET_NAME, Key=USERS_FILE)
+        return json.loads(response['Body'].read().decode('utf-8'))
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            return {}
+        st.error(f"Error loading users: {e}")
+        return {}
+
+def save_users(users):
+    try:
+        s3_client.put_object(
+            Bucket=BUCKET_NAME,
+            Key=USERS_FILE,
+            Body=json.dumps(users, indent=2).encode('utf-8')
         )
         return True
     except ClientError as e:
-        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-            st.error("User ID already exists!")
-        else:
-            st.error(f"Error creating user: {e}")
+        st.error(f"Error saving users: {e}")
         return False
+
+def create_user(user_id, password):
+    users = load_users()
+    if user_id in users:
+        st.error("User ID already exists!")
+        return False
+    users[user_id] = password
+    return save_users(users)
 
 def authenticate_user(user_id, password):
-    try:
-        response = table.get_item(Key={'user_id': user_id})
-        if 'Item' in response and response['Item']['password'] == password:
-            return True
-        return False
-    except ClientError as e:
-        st.error(f"Error authenticating user: {e}")
-        return False
-
-def get_json_storage_path(user_id=None):
-    if user_id:  # Logged-in user
-        user_folder = f"data/{user_id}"
-        os.makedirs(user_folder, exist_ok=True)
-        return user_folder
-    else:  # Non-member
-        return None  # JSON will be stored in session_state
+    users = load_users()
+    return user_id in users and users[user_id] == password
 
 def save_json_data(data, filename, user_id=None):
     if user_id:
-        storage_path = get_json_storage_path(user_id)
-        file_path = os.path.join(storage_path, filename)
-        with open(file_path, 'w') as f:
-            json.dump(data, f)
+        # Save to S3 in user-specific folder
+        file_key = f"{user_id}/{filename}"
+        try:
+            s3_client.put_object(
+                Bucket=BUCKET_NAME,
+                Key=file_key,
+                Body=json.dumps(data, indent=2).encode('utf-8')
+            )
+        except ClientError as e:
+            st.error(f"Error saving JSON to S3: {e}")
     else:
         # Store in session_state for non-members
         if 'non_member_data' not in st.session_state:
@@ -106,13 +110,18 @@ def save_json_data(data, filename, user_id=None):
 
 def load_json_data(filename, user_id=None):
     if user_id:
-        storage_path = get_json_storage_path(user_id)
-        file_path = os.path.join(storage_path, filename)
-        if os.path.exists(file_path):
-            with open(file_path, 'r') as f:
-                return json.load(f)
-        return None
+        # Load from S3
+        file_key = f"{user_id}/{filename}"
+        try:
+            response = s3_client.get_object(Bucket=BUCKET_NAME, Key=file_key)
+            return json.loads(response['Body'].read().decode('utf-8'))
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                return None
+            st.error(f"Error loading JSON from S3: {e}")
+            return None
     else:
+        # Load from session_state for non-members
         return st.session_state.non_member_data.get(filename) if 'non_member_data' in st.session_state else None
 
 def login_signup_page():
