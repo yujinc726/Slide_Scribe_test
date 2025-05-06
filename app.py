@@ -1,11 +1,10 @@
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, auth, firestore
+import boto3
+import json
+import os
 from slide_timer import lecture_timer_tab
 from srt_parser import srt_parser_tab
 from settings import settings_tab
-import json
-import os
 
 # Streamlit page configuration
 st.set_page_config(
@@ -47,193 +46,173 @@ st.markdown("""
         word-wrap: break-word !important;
         overflow-wrap: break-word !important;
     }
+    .login-container {
+        background-color: #f0f2f6;
+        padding: 20px;
+        border-radius: 10px;
+        max-width: 400px;
+        margin: 0 auto;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize Firebase
-def initialize_firebase():
-    if not firebase_admin._apps:
-        try:
-            # For Streamlit Cloud, use secrets
-            st.write(st.secrets)
-            if 'firebase' in st.secrets:
-                firebase_credentials = {
-                "type": st.secrets["firebase"]["type"],
-                "project_id": st.secrets["firebase"]["project_id"],
-                "private_key_id": st.secrets["firebase"]["private_key_id"],
-                "private_key": st.secrets["firebase"]["private_key"],
-                "client_email": st.secrets["firebase"]["client_email"],
-                "client_id": st.secrets["firebase"]["client_id"],
-                "auth_uri": st.secrets["firebase"]["auth_uri"],
-                "token_uri": st.secrets["firebase"]["token_uri"],
-                "auth_provider_x509_cert_url": st.secrets["firebase"]["auth_provider_x509_cert_url"],
-                "client_x509_cert_url": st.secrets["firebase"]["client_x509_cert_url"],
-                "universe_domain": st.secrets["firebase"]["universe_domain"]
-            }
-                firebase_credentials["private_key"] = firebase_credentials["private_key"].replace("\\n", "\n")
-                cred = credentials.Certificate(firebase_credentials)
+# Initialize S3 client
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=st.secrets.get("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=st.secrets.get("AWS_SECRET_ACCESS_KEY"),
+    region_name=st.secrets.get("AWS_DEFAULT_REGION")
+)
+BUCKET_NAME = "slide-scribe-data"
 
-                
-            else:
-                # For local development, use JSON file
-                cred = credentials.Certificate('slidescribe-firebase-adminsdk.json')
-            firebase_admin.initialize_app(cred)
-        except Exception as e:
-            st.error(f"Firebase initialization error: {e}")
-
-# Get Firestore client
-def get_db():
-    return firestore.client()
-
-# Register a new user
-def register_user(email, password):
-    try:
-        user = auth.create_user(email=email, password=password)
-        st.success(f"User {email} registered successfully!")
-        return user.uid
-    except Exception as e:
-        st.error(f"Registration error: {e}")
-        return None
-
-# Login a user
-def login_user(email, password):
-    try:
-        # Firebase Admin SDK workaround: verify user exists
-        user = auth.get_user_by_email(email)
-        # Store user session in Firestore for persistence
-        db = get_db()
-        db.collection('sessions').document(user.uid).set({
-            'email': email,
-            'last_active': firestore.SERVER_TIMESTAMP
-        })
-        st.success(f"Logged in as {email}")
-        return user.uid
-    except auth.AuthError as e:
-        st.error(f"Login error: Invalid email or password")
-        return None
-    except Exception as e:
-        st.error(f"Login error: {e}")
-        return None
-
-# Validate user session
-def validate_session(uid):
-    try:
-        # Check if user exists in Firebase Auth
-        auth.get_user(uid)
-        # Check Firestore session
-        db = get_db()
-        session = db.collection('sessions').document(uid).get()
-        if session.exists:
-            return True
-        return False
-    except auth.AuthError:
-        return False
-    except Exception as e:
-        st.error(f"Session validation error: {e}")
-        return False
-
-# Save user-specific JSON to Firestore
-def save_user_json(uid, json_data):
-    db = get_db()
-    try:
-        db.collection('users').document(uid).set({'settings': json_data})
-        st.success("Settings saved successfully!")
-    except Exception as e:
-        st.error(f"Error saving settings: {e}")
-
-# Load user-specific JSON from Firestore
-def load_user_json(uid):
-    db = get_db()
-    try:
-        doc = db.collection('users').document(uid).get()
-        if doc.exists:
-            return doc.to_dict().get('settings', {})
-        return {}
-    except Exception as e:
-        st.error(f"Error loading settings: {e}")
-        return {}
-
-def main():
-    # Initialize Firebase
-    initialize_firebase()
-
-    # Initialize session state
-    if 'user_uid' not in st.session_state:
-        st.session_state.user_uid = None
+def initialize_session_state():
+    """Initialize session state variables."""
+    if 'user_id' not in st.session_state:
+        st.session_state.user_id = None
+    if 'is_authenticated' not in st.session_state:
+        st.session_state.is_authenticated = False
+    if 'json_data' not in st.session_state:
+        st.session_state.json_data = {}
     if 'result_df' not in st.session_state:
         st.session_state.result_df = None
     if 'active_tab' not in st.session_state:
         st.session_state.active_tab = "SRT Parser"
 
-    # Check for existing session on page load
-    if st.session_state.user_uid and validate_session(st.session_state.user_uid):
-        # Session is valid, proceed to main app
-        st.title("Slide Scribe")
-        st.markdown(f"Made by 차유진 | Logged in as {auth.get_user(st.session_state.user_uid).email}")
+def save_json_to_s3(user_id, json_data):
+    """Save JSON data to S3 under user_id folder."""
+    try:
+        file_path = f"{user_id}/data.json"
+        s3_client.put_object(
+            Bucket=BUCKET_NAME,
+            Key=file_path,
+            Body=json.dumps(json_data, ensure_ascii=False).encode('utf-8')
+        )
+    except Exception as e:
+        st.error(f"Error saving to S3: {e}")
 
-        # Load user-specific JSON
-        user_json = load_user_json(st.session_state.user_uid)
-        if user_json:
-            st.session_state.user_json = user_json
-        else:
-            st.session_state.user_json = {}  # Default empty JSON
+def load_json_from_s3(user_id):
+    """Load JSON data from S3 for a user."""
+    try:
+        file_path = f"{user_id}/data.json"
+        response = s3_client.get_object(Bucket=BUCKET_NAME, Key=file_path)
+        return json.loads(response['Body'].read().decode('utf-8'))
+    except s3_client.exceptions.NoSuchKey:
+        return {}
+    except Exception as e:
+        st.error(f"Error loading from S3: {e}")
+        return {}
 
+def save_credentials(user_id, password):
+    """Save user credentials to S3."""
+    credentials = load_credentials()
+    credentials[user_id] = password
+    try:
+        s3_client.put_object(
+            Bucket=BUCKET_NAME,
+            Key="credentials.json",
+            Body=json.dumps(credentials, ensure_ascii=False).encode('utf-8')
+        )
+    except Exception as e:
+        st.error(f"Error saving credentials: {e}")
+
+def load_credentials():
+    """Load all credentials from S3."""
+    try:
+        response = s3_client.get_object(Bucket=BUCKET_NAME, Key="credentials.json")
+        return json.loads(response['Body'].read().decode('utf-8'))
+    except s3_client.exceptions.NoSuchKey:
+        return {}
+    except Exception as e:
+        st.error(f"Error loading credentials: {e}")
+        return {}
+
+def login_page():
+    """Render login and signup interface."""
+    st.markdown("<div class='login-container'>", unsafe_allow_html=True)
+    st.subheader("Login or Sign Up")
+    
+    # Tabs for Login and Signup
+    login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
+    
+    with login_tab:
+        user_id = st.text_input("User ID", key="login_user_id")
+        password = st.text_input("Password", type="password", key="login_password")
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("Login"):
+                credentials = load_credentials()
+                if user_id in credentials and credentials[user_id] == password:
+                    st.session_state.user_id = user_id
+                    st.session_state.is_authenticated = True
+                    st.session_state.json_data = load_json_from_s3(user_id)
+                    st.success("Logged in successfully!")
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials")
+        with col2:
+            if st.button("Guest Login"):
+                st.session_state.user_id = "guest"
+                st.session_state.is_authenticated = False
+                st.session_state.json_data = {}
+                st.success("Logged in as guest")
+                st.rerun()
+    
+    with signup_tab:
+        new_user_id = st.text_input("New User ID", key="signup_user_id")
+        new_password = st.text_input("New Password", type="password", key="signup_password")
+        if st.button("Sign Up"):
+            credentials = load_credentials()
+            if new_user_id in credentials:
+                st.error("User ID already exists")
+            elif new_user_id and new_password:
+                save_credentials(new_user_id, new_password)
+                st.success("Signed up successfully! Please log in.")
+            else:
+                st.error("Please fill in all fields")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+
+def main():
+    try:
+        initialize_session_state()
+        
+        # Show login page if not authenticated
+        if not st.session_state.is_authenticated and st.session_state.user_id != "guest":
+            login_page()
+            return
+        
+        # Main app interface
+        st.title('Slide Scribe')
+        st.markdown('Made by 차유진')
+        
+        # Logout button
+        col1, col2 = st.columns([9, 1])
+        with col2:
+            if st.session_state.is_authenticated or st.session_state.user_id == "guest":
+                if st.button("Logout"):
+                    st.session_state.user_id = None
+                    st.session_state.is_authenticated = False
+                    st.session_state.json_data = {}
+                    st.rerun()
+        
         # Tabs
         tab1, tab2, tab3 = st.tabs(["⏱️ Slide Timer", "📜 SRT Parser", "⚙️ Settings"])
-
+        
         with tab1:
             lecture_timer_tab()
-
+        
         with tab2:
             srt_parser_tab()
-
+            
         with tab3:
             settings_tab()
-
-        # Example: Save updated JSON (modify based on your JSON structure)
-        if st.button("Save Settings"):
-            # Replace with actual JSON data from your app
-            updated_json = st.session_state.user_json
-            save_user_json(st.session_state.user_uid, updated_json)
-
-        # Logout
-        if st.button("Logout"):
-            # Clear Firestore session
-            db = get_db()
-            db.collection('sessions').document(st.session_state.user_uid).delete()
-            st.session_state.user_uid = None
-            st.rerun()
-    else:
-        # No valid session, show login/registration UI
-        st.session_state.user_uid = None
-        st.title("Slide Scribe - Login/Register")
-        st.markdown("Made by 차유진")
-
-        login_tab, register_tab = st.tabs(["Login", "Register"])
-
-        with login_tab:
-            st.subheader("Login")
-            email = st.text_input("Email", key="login_email")
-            password = st.text_input("Password", type="password", key="login_password")
-            if st.button("Login"):
-                uid = login_user(email, password)
-                if uid:
-                    st.session_state.user_uid = uid
-                    st.rerun()
-
-        with register_tab:
-            st.subheader("Register")
-            new_email = st.text_input("Email", key="register_email")
-            new_password = st.text_input("Password", type="password", key="register_password")
-            confirm_password = st.text_input("Confirm Password", type="password", key="confirm_password")
-            if st.button("Register"):
-                if new_password == confirm_password:
-                    uid = register_user(new_email, new_password)
-                    if uid:
-                        st.session_state.user_uid = uid
-                        st.rerun()
-                else:
-                    st.error("Passwords do not match")
+            
+        # Save JSON data on tab interaction (example)
+        if st.session_state.is_authenticated:
+            save_json_to_s3(st.session_state.user_id, st.session_state.json_data)
+        
+    except Exception as e:
+        st.error(f"Error in main function: {e}")
 
 if __name__ == "__main__":
     main()
