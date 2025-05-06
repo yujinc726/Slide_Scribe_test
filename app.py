@@ -57,6 +57,7 @@ def initialize_firebase():
             # For Streamlit Cloud, use secrets
             if 'firebase' in st.secrets:
                 cred = credentials.Certificate(st.secrets['firebase'])
+                st.write('test')
             else:
                 # For local development, use JSON file
                 st.write('test')
