@@ -1,38 +1,75 @@
 import streamlit as st
 import json
+import os
+import shutil
 import pandas as pd
 import time
+from utils import user_timer_logs_dir
 
-# Local-storage helpers
-from local_storage_utils import (
-    load_lecture_names as ls_load_lecture_names,
-    save_lecture_names as ls_save_lecture_names,
-    list_json_files,
-    load_records,
-    save_json_file as ls_save_json_file,
-    delete_json_file as ls_delete_json_file,
-)
+def load_lecture_names():
+    """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
+    timer_logs_dir = user_timer_logs_dir()
+    lectures = []
+    
+    if os.path.exists(timer_logs_dir):
+        for lecture_name in os.listdir(timer_logs_dir):
+            lecture_path = os.path.join(timer_logs_dir, lecture_name)
+            if os.path.isdir(lecture_path):
+                lectures.append(lecture_name)
+    
+    return lectures
 
-# ----------------------------------------------------------------------------------
-# Legacy imports removed (os, shutil). File-system usage is deprecated.
-# ----------------------------------------------------------------------------------
+def save_lecture_names(lecture_names):
+    """lecture_names.json에 강의 이름 목록 저장"""
+    lecture_names_file = "lecture_names.json"
+    try:
+        with open(lecture_names_file, 'w', encoding='utf-8') as f:
+            json.dump(lecture_names, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"강의 이름 저장 중 오류: {e}")
 
-# ----------------------------------------------------------------------------------
-# Wrapper helpers using browser storage
-# ----------------------------------------------------------------------------------
+def ensure_directory(directory):
+    """디렉토리가 존재하는지 확인하고 없으면 생성"""
+    if not os.path.exists(directory):
+        os.makedirs(directory)
 
-def load_json_file_from_storage(lecture_name: str, file_name: str):
-    """Return records list stored in browser for given lecture/file."""
-    return load_records(lecture_name, file_name)
+def get_json_files_for_lecture(lecture_name):
+    """특정 강의 디렉토리에서 사용 가능한 JSON 파일 목록 가져오기"""
+    timer_logs_dir = os.path.join(user_timer_logs_dir(), lecture_name)
+    json_files = []
+    
+    if os.path.exists(timer_logs_dir):
+        for file_name in os.listdir(timer_logs_dir):
+            if file_name.endswith('.json'):
+                json_files.append(file_name)
+    
+    return json_files
 
-# ----------------------------------------------------------------------------------
+def load_json_file(json_path):
+    """JSON 파일에서 타이머 기록 로드"""
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        st.error(f"JSON 파일 로드 중 오류: {e}")
+        return []
+
+def save_json_file(json_path, data):
+    """타이머 기록을 JSON 파일로 저장"""
+    try:
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        st.error(f"JSON 파일 저장 중 오류: {e}")
+        return False
 
 def manage_json_files():
     """JSON 파일 관리 기능 구현"""
     st.subheader("JSON 파일 관리")
     
     # 강의 선택
-    available_lectures = ls_load_lecture_names()
+    available_lectures = load_lecture_names()
     if not available_lectures:
         st.info("등록된 강의가 없습니다.")
         return
@@ -78,8 +115,12 @@ def manage_json_files():
                 try:
                     # JSON 파일 검증
                     json_data = json.loads(uploaded_file_info["content"])
-                    # 브라우저 스토리지에 직접 저장
-                    ls_save_json_file(selected_lecture, uploaded_file_info["name"], json_data)
+                    # 파일 저장 경로
+                    upload_path = os.path.join(user_timer_logs_dir(), selected_lecture, uploaded_file_info["name"])
+                    ensure_directory(os.path.join(user_timer_logs_dir(), selected_lecture))
+                    # JSON 파일 저장
+                    with open(upload_path, 'w', encoding='utf-8') as f:
+                        json.dump(json_data, f, ensure_ascii=False, indent=2)
                     # 성공 메시지 저장
                     st.session_state[f"upload_success_{selected_lecture}"] = f"{uploaded_file_info['name']} 파일을 불러왔습니다."
                     # 업로드 상태 초기화 및 파일 업로더 리셋
@@ -99,7 +140,7 @@ def manage_json_files():
         
         with st.expander("JSON 파일 관리"):
             # JSON 파일 목록
-            json_files = list_json_files(selected_lecture)
+            json_files = get_json_files_for_lecture(selected_lecture)
             selected_json = st.selectbox(
                 "JSON 파일 선택",
                 json_files,
@@ -113,7 +154,9 @@ def manage_json_files():
                 col1, col2 = st.columns(2)
                 with col1:
                     # JSON 파일 다운로드
-                    file_content = json.dumps(load_records(selected_lecture, selected_json), ensure_ascii=False, indent=2)
+                    json_path = os.path.join(user_timer_logs_dir(), selected_lecture, selected_json)
+                    with open(json_path, 'r', encoding='utf-8') as f:
+                        file_content = f.read()
                     st.download_button(
                         label="기록 다운로드",
                         data=file_content,
@@ -124,14 +167,16 @@ def manage_json_files():
                     )
                 with col2:
                     if st.button("기록 삭제", use_container_width=True, disabled=not selected_json):
-                        if ls_delete_json_file(selected_lecture, selected_json):
+                        try:
+                            json_path = os.path.join(user_timer_logs_dir(), selected_lecture, selected_json)
+                            os.remove(json_path)
                             st.success(f"{selected_json} 파일이 삭제되었습니다.")
                             st.rerun()
-                        else:
-                            st.error("삭제 중 오류가 발생했습니다.")
+                        except Exception as e:
+                            st.error(f"파일 삭제 중 오류: {e}")
                 
                 # 파일 내용 불러오기
-                json_data = load_records(selected_lecture, selected_json)
+                json_data = load_json_file(json_path)
                 
                 if not json_data:
                     st.warning("선택한 파일을 불러올 수 없거나 파일이 비어있습니다.")
@@ -157,10 +202,10 @@ def manage_json_files():
                 
                 # 변경사항 저장 버튼 (데이터 에디터 아래)
                 if st.button("변경사항 저장", use_container_width=True):
-                    if ls_save_json_file(selected_lecture, selected_json, edited_df.to_dict('records')):
-                        st.success(f"{selected_json} 이(가) 저장되었습니다.")
+                    if save_json_file(json_path, edited_df.to_dict('records')):
+                        st.success(f"{selected_json} 파일이 저장되었습니다.")
                     else:
-                        st.error("저장 중 오류가 발생했습니다.")
+                        st.error("파일 저장 중 오류가 발생했습니다.")
 
 def manage_lectures():
     """강의 이름 관리 기능 구현"""
@@ -172,7 +217,9 @@ def manage_lectures():
             if new_lecture.strip():
                 if new_lecture not in st.session_state.lecture_names:
                     st.session_state.lecture_names.append(new_lecture)
-                    ls_save_lecture_names(st.session_state.lecture_names)
+                    save_lecture_names(st.session_state.lecture_names)
+                    # 디렉토리 생성
+                    ensure_directory(os.path.join(user_timer_logs_dir(), new_lecture))
                     st.rerun()
                     st.success(f"강의가 추가되었습니다: {new_lecture}")
                 else:
@@ -181,7 +228,7 @@ def manage_lectures():
                 st.warning("강의 이름을 입력해주세요.")
         # 초기화
         if 'lecture_names' not in st.session_state:
-            st.session_state.lecture_names = ls_load_lecture_names()
+            st.session_state.lecture_names = load_lecture_names()
     
     with st.expander("강의 삭제"):
         if st.session_state.lecture_names:
@@ -199,11 +246,15 @@ def manage_lectures():
         if st.button("강의 삭제", key="remove_lectures_settings"):
             if selected_lectures:
                 for lecture in selected_lectures:
-                    # delete all logs for lecture
-                    for f in list_json_files(lecture):
-                        ls_delete_json_file(lecture, f)
+                    lecture_dir = os.path.join(user_timer_logs_dir(), lecture)
+                    # 디렉토리 삭제
+                    if os.path.exists(lecture_dir):
+                        try:
+                            shutil.rmtree(lecture_dir)
+                        except Exception as e:
+                            st.error(f"디렉토리 삭제 중 오류: {e}")
                     st.session_state.lecture_names.remove(lecture)
-                ls_save_lecture_names(st.session_state.lecture_names)
+                save_lecture_names(st.session_state.lecture_names)
                 st.success(f"{len(selected_lectures)}개의 강의가 삭제되었습니다.")
                 st.rerun()
             else:
