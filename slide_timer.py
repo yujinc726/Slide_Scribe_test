@@ -1,79 +1,99 @@
 import streamlit as st
 from datetime import datetime, timedelta
 import json
-import os
 import pandas as pd
 import streamlit.components.v1 as components
-import glob
+import boto3
+
+# Initialize S3 client
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=st.secrets.get("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=st.secrets.get("AWS_SECRET_ACCESS_KEY"),
+    region_name=st.secrets.get("AWS_DEFAULT_REGION")
+)
+BUCKET_NAME = "slide-scribe-data"  # Replace with your bucket name
 
 def load_lecture_names():
-    """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
-    timer_logs_dir = "timer_logs"
-    lectures = []
-    
-    if os.path.exists(timer_logs_dir):
-        for lecture_name in os.listdir(timer_logs_dir):
-            lecture_path = os.path.join(timer_logs_dir, lecture_name)
-            if os.path.isdir(lecture_path):
-                lectures.append(lecture_name)
-    
-    return lectures
+    """Load lecture names from S3 (authenticated) or session state (guest)."""
+    if st.session_state.is_authenticated:
+        lecture_names = st.session_state.get('app').load_json_from_s3(st.session_state.user_id, "lecture_names.json") or []
+    else:
+        lecture_names = st.session_state.json_data.get('lecture_names', [])
+    return lecture_names
 
 def save_lecture_names(lecture_names):
-    """lecture_names.json에 강의 이름 목록 저장"""
-    lecture_names_file = "lecture_names.json"
-    try:
-        with open(lecture_names_file, 'w', encoding='utf-8') as f:
-            json.dump(lecture_names, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        st.error(f"강의 이름 저장 중 오류: {e}")
-
-def ensure_directory(directory):
-    """디렉토리가 존재하는지 확인하고 없으면 생성"""
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    """Save lecture names to S3 (authenticated) or session state (guest)."""
+    if st.session_state.is_authenticated:
+        st.session_state.get('app').save_json_to_s3(st.session_state.user_id, "lecture_names.json", lecture_names)
+    else:
+        st.session_state.json_data['lecture_names'] = lecture_names
 
 def save_records_to_json(lecture_name, records):
-    """타이머 기록을 JSON 파일로 저장"""
+    """Save timer records to JSON file in S3 (authenticated) or session state (guest)."""
     try:
-        #lecture_name = lecture_name.replace("/", "_").replace("\\", "_")
         date = datetime.now().strftime("%Y-%m-%d")
-        timestamp = datetime.now().strftime("%H%M%S")  # 24-hour format HHMMSS
-        directory = f"timer_logs/{lecture_name}"
-        ensure_directory(directory)
+        timestamp = datetime.now().strftime("%H%M%S")
+        file_name = f"{date}_{timestamp}.json"
         
-        file_path = f"{directory}/{date}_{timestamp}.json"
-        
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(records, f, ensure_ascii=False, indent=2)
-        return file_path
+        if st.session_state.is_authenticated:
+            # Save to S3
+            file_path = f"timer_logs/{lecture_name}/{file_name}"
+            st.session_state.get('app').save_json_to_s3(st.session_state.user_id, file_path, records)
+            return file_path
+        else:
+            # Save to session state
+            if lecture_name not in st.session_state.json_data['records']:
+                st.session_state.json_data['records'][lecture_name] = []
+            st.session_state.json_data['records'][lecture_name].append({
+                'file_name': file_name,
+                'records': records
+            })
+            return file_name
     except Exception as e:
         st.error(f"JSON 파일 저장 중 오류: {e}")
         return None
 
 def load_records_from_json(file_path):
-    """JSON 파일에서 기록 로드"""
+    """Load records from JSON file in S3 (authenticated) or session state (guest)."""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        if st.session_state.is_authenticated:
+            records = st.session_state.get('app').load_json_from_s3(st.session_state.user_id, file_path)
+            return records if records else []
+        else:
+            for record in st.session_state.json_data['records'].get(file_path.split('/')[1], []):
+                if record['file_name'] == file_path.split('/')[-1]:
+                    return record['records']
+            return []
     except Exception as e:
         st.error(f"JSON 파일 로드 중 오류: {e}")
         return []
 
 def get_existing_json_files(lecture_name):
-    """강의에 해당하는 기존 JSON 파일 목록 반환"""
-    #lecture_name = lecture_name.replace("/", "_").replace("\\", "_")
-    directory = f"timer_logs/{lecture_name}"
-    if os.path.exists(directory):
-        json_files = glob.glob(f"{directory}/*.json")
-        return sorted(json_files, reverse=True)  # 최신 파일이 먼저 오도록 정렬
-    return []
+    """Return list of existing JSON files for a lecture."""
+    if st.session_state.is_authenticated:
+        try:
+            response = s3_client.list_objects_v2(
+                Bucket=BUCKET_NAME,
+                Prefix=f"{st.session_state.user_id}/timer_logs/{lecture_name}/"
+            )
+            files = [obj['Key'].split('/')[-1] for obj in response.get('Contents', []) if obj['Key'].endswith('.json')]
+            return sorted(files, reverse=True)
+        except Exception as e:
+            st.error(f"Error listing S3 files: {e}")
+            return []
+    else:
+        files = [record['file_name'] for record in st.session_state.json_data['records'].get(lecture_name, [])]
+        return sorted(files, reverse=True)
 
 def lecture_timer_tab():
     """Slide Timer 탭 구현"""
-    #st.header("Slide Timer")
+    # Store app module reference in session state
+    if 'app' not in st.session_state:
+        import app
+        st.session_state['app'] = app
 
-    # 세션 상태 초기화
+    # Initialize session state
     if 'lecture_names' not in st.session_state:
         st.session_state.lecture_names = load_lecture_names()
     if 'timer_running' not in st.session_state:
@@ -97,7 +117,7 @@ def lecture_timer_tab():
     if 'selected_json_file' not in st.session_state:
         st.session_state.selected_json_file = None
 
-    # 두 개의 주요 컬럼으로 레이아웃 구성
+    # Layout with two columns
     left_col, right_col = st.columns([1, 2])
 
     with left_col:
@@ -113,9 +133,9 @@ def lecture_timer_tab():
         if not st.session_state.lecture_names:
             st.info("Settings 탭에서 강의를 추가해주세요.")
         
-        # 기존 JSON 파일 선택
-        json_files = get_existing_json_files(lecture_name)
-        json_options = ["새 기록 시작"] + [os.path.basename(f) for f in json_files]
+        # Select existing JSON files
+        json_files = get_existing_json_files(lecture_name) if lecture_name else []
+        json_options = ["새 기록 시작"] + json_files
         selected_json = st.selectbox(
             "기록 선택",
             json_options,
@@ -125,9 +145,9 @@ def lecture_timer_tab():
         )
 
         def load_selected_json(json_files, json_options):
-            """선택한 JSON 파일 로드 및 세션 상태 업데이트"""
+            """Load selected JSON file and update session state."""
             selected_index = json_options.index(st.session_state.json_file_select)
-            if selected_index == 0:  # 새 기록 시작
+            if selected_index == 0:  # New record
                 st.session_state.records = []
                 st.session_state.slide_number = 1
                 st.session_state.last_slide_start_time = None
@@ -136,23 +156,20 @@ def lecture_timer_tab():
                 st.session_state.start_time_value = "00:00:00.000"
                 st.session_state.selected_json_file = None
             else:
-                file_path = json_files[selected_index - 1]
+                file_name = json_files[selected_index - 1]
+                file_path = f"timer_logs/{lecture_name}/{file_name}" if st.session_state.is_authenticated else f"{lecture_name}/{file_name}"
                 records = load_records_from_json(file_path)
                 if records:
                     st.session_state.records = records
                     st.session_state.selected_json_file = file_path
-                    # 마지막 슬라이드 번호 설정
                     last_slide = max([int(r["slide_number"]) for r in records], default=0)
                     st.session_state.slide_number = last_slide + 1
-                    # 마지막 슬라이드의 종료 시간 설정
                     last_record = records[-1]
                     st.session_state.last_slide_start_time = last_record["end_time"]
-                    # 시작 시간 설정
                     try:
                         start_time_str = records[-1]["end_time"]
                         st.session_state.start_time = datetime.strptime(start_time_str, "%H:%M:%S.%f")
                         st.session_state.start_time_value = start_time_str
-                        # 경과 시간 계산 (마지막 종료 시간 - 시작 시간)
                         last_end_time = datetime.strptime(last_record["end_time"], "%H:%M:%S.%f")
                         st.session_state.elapsed_time = (last_end_time - st.session_state.start_time).total_seconds() * 1000
                     except ValueError:
@@ -167,19 +184,17 @@ def lecture_timer_tab():
                     st.session_state.start_time = None
                     st.session_state.start_time_value = "00:00:00.000"
 
-        # Stopwatch 섹션
-        # Slide Control 섹션
+        # Slide control
         st.session_state.slide_number = st.number_input("Slide Number", min_value=1, value=st.session_state.slide_number, step=1, key="slide_input")
-        # Start Time 입력 필드 (Pause 상태에서만 편집 가능)
         start_time_input = st.text_input(
             "Start Time",
             value=st.session_state.start_time_value,
             key="start_time_input",
             disabled=st.session_state.timer_running
         )
-        # Update start_time_value with user input
         st.session_state.start_time_value = start_time_input
-        # 타이머 표시
+
+        # Timer display
         elapsed_ms = st.session_state.elapsed_time
         if st.session_state.timer_running and st.session_state.timer_start:
             elapsed_ms += (datetime.now() - st.session_state.timer_start).total_seconds() * 1000
@@ -194,7 +209,6 @@ def lecture_timer_tab():
             milliseconds = int(elapsed_ms % 1000)
             initial_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
 
-        # JavaScript로 전달할 start_time_ms 계산
         start_time_ms = 0
         if st.session_state.start_time:
             start_time_ms = (
@@ -232,38 +246,32 @@ def lecture_timer_tab():
                 }}
             }}
 
-            // 테마 감지 및 스타일 업데이트
             function updateTheme() {{
                 const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
                 const timerDisplay = document.getElementById('timer-display');
                 if (timerDisplay) {{
                     if (isDarkMode) {{
-                        timerDisplay.style.backgroundColor = '#1a1a1a'; // 다크 모드 배경
-                        timerDisplay.style.color = '#ffffff'; // 다크 모드 글씨
+                        timerDisplay.style.backgroundColor = '#1a1a1a';
+                        timerDisplay.style.color = '#ffffff';
                     }} else {{
-                        timerDisplay.style.backgroundColor = '#ffffff'; // 라이트 모드 배경
-                        timerDisplay.style.color = '#000000'; // 라이트 모드 글씨
+                        timerDisplay.style.backgroundColor = '#ffffff';
+                        timerDisplay.style.color = '#000000';
                     }}
                 }}
             }}
 
-            // 초기 테마 설정 및 테마 변경 감지
             updateTheme();
             window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateTheme);
-
-            // 타이머 업데이트
             let timerInterval = setInterval(updateTimer, 10);
-
-            // 컴포넌트 언마운트 시 정리
             window.addEventListener('unload', () => clearInterval(timerInterval));
         </script>
         """
         components.html(timer_html, height=60)
+
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
             start_button_label = "Resume" if st.session_state.elapsed_time > 0 and not st.session_state.timer_running else "Start"
             if st.button(start_button_label, disabled=st.session_state.timer_running, use_container_width=True):
-                # Start 버튼 클릭 시
                 try:
                     start_time_str = start_time_input
                     new_start_time = datetime.strptime(start_time_str, "%H:%M:%S.%f")
@@ -271,10 +279,8 @@ def lecture_timer_tab():
                     if new_start_time > datetime.now():
                         new_start_time -= timedelta(days=1)
                     
-                    # Check if start_time has changed
                     current_start_time_str = st.session_state.start_time.strftime("%H:%M:%S.%f")[:-3] if st.session_state.start_time else "00:00:00.000"
                     if start_time_str != current_start_time_str:
-                        # Reset elapsed_time if start_time is modified
                         st.session_state.elapsed_time = 0
                         st.session_state.last_slide_start_time = new_start_time.strftime("%H:%M:%S.%f")[:-3]
                     
@@ -284,18 +290,15 @@ def lecture_timer_tab():
                     st.session_state.elapsed_time = 0
                     st.session_state.last_slide_start_time = st.session_state.start_time.strftime("%H:%M:%S.%f")[:-3]
                 
-                # Set timer_running and update timer_start
                 st.session_state.timer_running = True
                 st.session_state.timer_start = datetime.now()
-                
                 st.rerun()
+
         with col2:
             if st.button("Pause", disabled=not st.session_state.timer_running, use_container_width=True):
                 st.session_state.timer_running = False
-                # 현재까지 경과한 시간을 누적
                 if st.session_state.timer_start:
                     st.session_state.elapsed_time += (datetime.now() - st.session_state.timer_start).total_seconds() * 1000
-                    # Start Time 입력 칸 업데이트
                 elapsed_seconds = st.session_state.elapsed_time / 1000
                 if st.session_state.start_time:
                     absolute_time = st.session_state.start_time + timedelta(seconds=elapsed_seconds)
@@ -307,6 +310,7 @@ def lecture_timer_tab():
                     milliseconds = int(st.session_state.elapsed_time % 1000)
                     st.session_state.start_time_value = f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
                 st.rerun()
+
         with col3:
             if st.button("Reset", use_container_width=True):
                 st.session_state.timer_running = False
@@ -320,28 +324,22 @@ def lecture_timer_tab():
                 st.session_state.selected_json_file = None
                 st.rerun()
 
-        # Note 섹션
         st.text_input("Notes", value="", key="notes")
 
         if st.button("Record Time", key="record_button", help="Press to record", type='primary', use_container_width=True, disabled=not lecture_name):
-            # 현재 경과 시간 계산
             current_elapsed_ms = st.session_state.elapsed_time
             if st.session_state.timer_running and st.session_state.timer_start:
                 current_elapsed_ms += (datetime.now() - st.session_state.timer_start).total_seconds() * 1000
             
-            # start_time 확인 및 기본값 설정
             if st.session_state.start_time is None:
                 st.session_state.start_time = datetime.combine(datetime.now().date(), datetime.time(0, 0, 0))
             
-            # 현재 시간 계산
             elapsed_seconds = current_elapsed_ms / 1000
             current_time = st.session_state.start_time + timedelta(seconds=elapsed_seconds)
             current_time_str = current_time.strftime("%H:%M:%S.%f")[:-3]
             
-            # 이전 슬라이드의 시작 시간
             start_time = st.session_state.last_slide_start_time if st.session_state.last_slide_start_time else st.session_state.start_time.strftime("%H:%M:%S.%f")[:-3]
             
-            # 기록 추가
             st.session_state.records.append({
                 "slide_number": str(st.session_state.slide_number),
                 "start_time": start_time,
@@ -349,14 +347,12 @@ def lecture_timer_tab():
                 "notes": st.session_state.notes
             })
             
-            # 다음 슬라이드의 시작 시간 및 슬라이드 번호 업데이트
             st.session_state.last_slide_start_time = current_time_str
             st.session_state.slide_number += 1
             st.session_state.notes_input = ""
             st.session_state["notes_input"] = ""
             st.rerun()
 
-        # JSON 저장
         if st.button("기록 저장", use_container_width=True, disabled=not st.session_state.records):
             json_file_path = save_records_to_json(
                 lecture_name,
@@ -368,7 +364,6 @@ def lecture_timer_tab():
                 st.session_state.selected_json_file = json_file_path
 
     with right_col:
-        # 기록된 시간 표시
         st.subheader("Records")
         if st.session_state.records:
             df = pd.DataFrame(st.session_state.records)
