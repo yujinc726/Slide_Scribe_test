@@ -98,10 +98,14 @@ def register_user(email, password):
 # Login a user
 def login_user(email, password):
     try:
-        # Firebase Admin SDK doesn't support client-side login, so we use a workaround
-        # Verify password by attempting to create a user with the same email (will fail if exists)
+        # Firebase Admin SDK workaround: verify user exists
         user = auth.get_user_by_email(email)
-        # In a real app, use Firebase Client SDK for login (see notes below)
+        # Store user session in Firestore for persistence
+        db = get_db()
+        db.collection('sessions').document(user.uid).set({
+            'email': email,
+            'last_active': firestore.SERVER_TIMESTAMP
+        })
         st.success(f"Logged in as {email}")
         return user.uid
     except auth.AuthError as e:
@@ -110,6 +114,23 @@ def login_user(email, password):
     except Exception as e:
         st.error(f"Login error: {e}")
         return None
+
+# Validate user session
+def validate_session(uid):
+    try:
+        # Check if user exists in Firebase Auth
+        auth.get_user(uid)
+        # Check Firestore session
+        db = get_db()
+        session = db.collection('sessions').document(uid).get()
+        if session.exists:
+            return True
+        return False
+    except auth.AuthError:
+        return False
+    except Exception as e:
+        st.error(f"Session validation error: {e}")
+        return False
 
 # Save user-specific JSON to Firestore
 def save_user_json(uid, json_data):
@@ -144,38 +165,9 @@ def main():
     if 'active_tab' not in st.session_state:
         st.session_state.active_tab = "SRT Parser"
 
-    # If not logged in, show login/registration UI
-    if not st.session_state.user_uid:
-        st.title("Slide Scribe - Login/Register")
-        st.markdown("Made by 차유진")
-
-        login_tab, register_tab = st.tabs(["Login", "Register"])
-
-        with login_tab:
-            st.subheader("Login")
-            email = st.text_input("Email", key="login_email")
-            password = st.text_input("Password", type="password", key="login_password")
-            if st.button("Login"):
-                uid = login_user(email, password)
-                if uid:
-                    st.session_state.user_uid = uid
-                    st.rerun()
-
-        with register_tab:
-            st.subheader("Register")
-            new_email = st.text_input("Email", key="register_email")
-            new_password = st.text_input("Password", type="password", key="register_password")
-            confirm_password = st.text_input("Confirm Password", type="password", key="confirm_password")
-            if st.button("Register"):
-                if new_password == confirm_password:
-                    uid = register_user(new_email, new_password)
-                    if uid:
-                        st.session_state.user_uid = uid
-                        st.rerun()
-                else:
-                    st.error("Passwords do not match")
-    else:
-        # Main app for authenticated users
+    # Check for existing session on page load
+    if st.session_state.user_uid and validate_session(st.session_state.user_uid):
+        # Session is valid, proceed to main app
         st.title("Slide Scribe")
         st.markdown(f"Made by 차유진 | Logged in as {auth.get_user(st.session_state.user_uid).email}")
 
@@ -206,8 +198,42 @@ def main():
 
         # Logout
         if st.button("Logout"):
+            # Clear Firestore session
+            db = get_db()
+            db.collection('sessions').document(st.session_state.user_uid).delete()
             st.session_state.user_uid = None
             st.rerun()
+    else:
+        # No valid session, show login/registration UI
+        st.session_state.user_uid = None
+        st.title("Slide Scribe - Login/Register")
+        st.markdown("Made by 차유진")
+
+        login_tab, register_tab = st.tabs(["Login", "Register"])
+
+        with login_tab:
+            st.subheader("Login")
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Password", type="password", key="login_password")
+            if st.button("Login"):
+                uid = login_user(email, password)
+                if uid:
+                    st.session_state.user_uid = uid
+                    st.rerun()
+
+        with register_tab:
+            st.subheader("Register")
+            new_email = st.text_input("Email", key="register_email")
+            new_password = st.text_input("Password", type="password", key="register_password")
+            confirm_password = st.text_input("Confirm Password", type="password", key="confirm_password")
+            if st.button("Register"):
+                if new_password == confirm_password:
+                    uid = register_user(new_email, new_password)
+                    if uid:
+                        st.session_state.user_uid = uid
+                        st.rerun()
+                else:
+                    st.error("Passwords do not match")
 
 if __name__ == "__main__":
     main()
