@@ -351,7 +351,7 @@ def lecture_timer_tab():
             file_name = f"{date}_{timestamp}.json"
             components.html(f"""
             <script>
-                window.parent.postMessage({{type: 'SAVE_RECORDS', data: {{lectureName: '{lecture_name}', fileName: '{file_name}', records: {json.dumps(st.session_state.records)}}}}, '*');
+                window.parent.postMessage({{type: 'SAVE_RECORDS', data: {{lectureName: '{lecture_name}', fileName: '{file_name}', records: {json.dumps(st.session_state.records)}}}}}, '*');
             </script>
             """, height=0)
             st.session_state.selected_json_file = file_name
