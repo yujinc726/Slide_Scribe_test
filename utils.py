@@ -54,10 +54,16 @@ def _obtain_user_id_from_browser() -> str:
 
 
 def get_user_id() -> str:
-    """Return a cached unique id for the current browser session."""
-    if 'user_id' not in st.session_state:
-        st.session_state['user_id'] = _obtain_user_id_from_browser()
-    return st.session_state['user_id']
+    """Return a cached unique id for the current browser session.
+
+    If the stored value is missing or invalid (None, empty, not a string), we
+    regenerate it to avoid propagation of bad state across reruns.
+    """
+    uid = st.session_state.get('user_id') if 'user_id' in st.session_state else None
+    if not isinstance(uid, str) or not uid:
+        uid = _obtain_user_id_from_browser()
+        st.session_state['user_id'] = uid
+    return uid
 
 
 def user_timer_logs_dir() -> str:
