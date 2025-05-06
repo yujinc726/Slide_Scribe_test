@@ -51,23 +51,14 @@ def _get_from_storage(key: str):
     give ``None``.  We therefore also check *session_state* for the cached
     value that the component writes there.
     """
-    component_key = f"ls_get_{key}"
-    try:
-        value = _ls().getItem(key, key=component_key)
-    except TypeError:
-        value = _ls().getItem(key)
-    if value in (None, "null"):
-        # Component value not available yet – try session_state cache.
-        value = st.session_state.get(component_key)
+    # Use simple signature; library handles session separation internally.
+    value = _ls().getItem(key)
     return value
 
 
 def _set_in_storage(key: str, raw_value: str):
     """Write a JSON-encoded *raw_value* to browser local-storage."""
-    try:
-        _ls().setItem(key, raw_value, key=f"ls_set_{key}")
-    except TypeError:
-        _ls().setItem(key, raw_value)
+    _ls().setItem(key, raw_value)
 
 
 # ------------------------------------------------------------------------------
