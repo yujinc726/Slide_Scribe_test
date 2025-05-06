@@ -3,12 +3,62 @@ from datetime import datetime, timedelta
 import json
 import pandas as pd
 import streamlit.components.v1 as components
+from streamlit_javascript import st_javascript
+
+def load_lecture_names():
+    """Load lecture names from localStorage"""
+    js_code = """
+    return JSON.parse(localStorage.getItem('lecture_names') || '[]');
+    """
+    return st_javascript(js_code) or []
+
+def save_lecture_names(lecture_names):
+    """Save lecture names to localStorage"""
+    js_code = f"""
+    localStorage.setItem('lecture_names', JSON.stringify({json.dumps(lecture_names)}));
+    return true;
+    """
+    st_javascript(js_code)
+
+def save_records(lecture_name, records):
+    """Save timer records to localStorage"""
+    date = datetime.now().strftime("%Y-%m-%d")
+    timestamp = datetime.now().strftime("%H%M%S")
+    file_name = f"{date}_{timestamp}.json"
+    js_code = f"""
+    const key = `records_{lecture_name}_{file_name}`;
+    localStorage.setItem(key, JSON.stringify({json.dumps(records)}));
+    return `{file_name}`;
+    """
+    return st_javascript(js_code)
+
+def load_records(lecture_name, file_name):
+    """Load records from localStorage"""
+    js_code = f"""
+    const key = `records_{lecture_name}_{file_name}`;
+    return JSON.parse(localStorage.getItem(key) || '[]');
+    """
+    return st_javascript(js_code) or []
+
+def get_existing_json_files(lecture_name):
+    """Get list of JSON files for a lecture from localStorage"""
+    js_code = f"""
+    const files = [];
+    for (let i = 0; i < localStorage.length; i++) {{
+        const key = localStorage.key(i);
+        if (key.startsWith(`records_{lecture_name}_`)) {{
+            files.push(key.replace(`records_{lecture_name}_`, ''));
+        }}
+    }}
+    return files;
+    """
+    return st_javascript(js_code) or []
 
 def lecture_timer_tab():
     """Slide Timer 탭 구현"""
     # 세션 상태 초기화
     if 'lecture_names' not in st.session_state:
-        st.session_state.lecture_names = []
+        st.session_state.lecture_names = load_lecture_names()
     if 'timer_running' not in st.session_state:
         st.session_state.timer_running = False
     if 'start_time' not in st.session_state:
@@ -30,87 +80,6 @@ def lecture_timer_tab():
     if 'selected_json_file' not in st.session_state:
         st.session_state.selected_json_file = None
 
-    # JavaScript for localStorage operations
-    js_code = """
-    <script>
-        // Load lecture names from localStorage
-        function loadLectureNames() {
-            const lectureNames = JSON.parse(localStorage.getItem('lecture_names') || '[]');
-            window.parent.postMessage({type: 'LECTURE_NAMES', data: lectureNames}, '*');
-        }
-
-        // Save lecture names to localStorage
-        function saveLectureNames(names) {
-            localStorage.setItem('lecture_names', JSON.stringify(names));
-        }
-
-        // Load records for a specific lecture and file
-        function loadRecords(lectureName, fileName) {
-            const key = `records_${lectureName}_${fileName}`;
-            const records = JSON.parse(localStorage.getItem(key) || '[]');
-            window.parent.postMessage({type: 'RECORDS', data: records, lectureName: lectureName, fileName: fileName}, '*');
-        }
-
-        // Save records for a specific lecture and file
-        function saveRecords(lectureName, fileName, records) {
-            const key = `records_${lectureName}_${fileName}`;
-            localStorage.setItem(key, JSON.stringify(records));
-        }
-
-        // Get list of JSON files for a lecture
-        function getJsonFiles(lectureName) {
-            const files = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key.startsWith(`records_${lectureName}_`)) {
-                    files.push(key.replace(`records_${lectureName}_`, ''));
-                }
-            }
-            window.parent.postMessage({type: 'JSON_FILES', data: files, lectureName: lectureName}, '*');
-        }
-
-        // Handle messages from Streamlit
-        window.addEventListener('message', (event) => {
-            const {type, data} = event.data;
-            if (type === 'LOAD_LECTURE_NAMES') {
-                loadLectureNames();
-            } else if (type === 'SAVE_LECTURE_NAMES') {
-                saveLectureNames(data);
-            } else if (type === 'LOAD_RECORDS') {
-                loadRecords(data.lectureName, data.fileName);
-            } else if (type === 'SAVE_RECORDS') {
-                saveRecords(data.lectureName, data.fileName, data.records);
-            } else if (type === 'GET_JSON_FILES') {
-                getJsonFiles(data.lectureName);
-            }
-        });
-
-        // Initialize by loading lecture names
-        loadLectureNames();
-    </script>
-    """
-    components.html(js_code, height=0)
-
-    # Handle JavaScript messages in Streamlit
-    if 'js_messages' not in st.session_state:
-        st.session_state.js_messages = []
-
-    def handle_js_message():
-        """Handle messages from JavaScript"""
-        js_message = st._get_message()
-        if js_message and isinstance(js_message, dict):
-            st.session_state.js_messages.append(js_message)
-            if js_message.get('type') == 'LECTURE_NAMES':
-                st.session_state.lecture_names = js_message.get('data', [])
-            elif js_message.get('type') == 'RECORDS':
-                st.session_state.records = js_message.get('data', [])
-                st.session_state.selected_json_file = js_message.get('fileName')
-            elif js_message.get('type') == 'JSON_FILES':
-                st.session_state.json_files = js_message.get('data', [])
-
-    # Trigger JavaScript message handling
-    handle_js_message()
-
     # 두 개의 주요 컬럼으로 레이아웃 구성
     left_col, right_col = st.columns([1, 2])
 
@@ -128,15 +97,7 @@ def lecture_timer_tab():
             st.info("Settings 탭에서 강의를 추가해주세요.")
         
         # 기존 JSON 파일 선택
-        json_files = []
-        if lecture_name:
-            components.html(f"""
-            <script>
-                window.parent.postMessage({{type: 'GET_JSON_FILES', data: {{lectureName: '{lecture_name}'}}}}, '*');
-            </script>
-            """, height=0)
-            json_files = getattr(st.session_state, 'json_files', [])
-        
+        json_files = get_existing_json_files(lecture_name) if lecture_name else []
         json_options = ["새 기록 시작"] + json_files
         selected_json = st.selectbox(
             "기록 선택",
@@ -159,16 +120,13 @@ def lecture_timer_tab():
                 st.session_state.selected_json_file = None
             else:
                 file_name = json_files[selected_index - 1]
-                components.html(f"""
-                <script>
-                    window.parent.postMessage({{type: 'LOAD_RECORDS', data: {{lectureName: '{lecture_name}', fileName: '{file_name}'}}}}, '*');
-                </script>
-                """, height=0)
-                # Records will be updated via JS message
-                if st.session_state.records:
-                    last_slide = max([int(r["slide_number"]) for r in st.session_state.records], default=0)
+                records = load_records(lecture_name, file_name)
+                if records:
+                    st.session_state.records = records
+                    st.session_state.selected_json_file = file_name
+                    last_slide = max([int(r["slide_number"]) for r in records], default=0)
                     st.session_state.slide_number = last_slide + 1
-                    last_record = st.session_state.records[-1]
+                    last_record = records[-1]
                     st.session_state.last_slide_start_time = last_record["end_time"]
                     try:
                         start_time_str = last_record["end_time"]
@@ -180,6 +138,13 @@ def lecture_timer_tab():
                         st.session_state.start_time = None
                         st.session_state.start_time_value = "00:00:00.000"
                         st.session_state.elapsed_time = 0
+                else:
+                    st.session_state.records = []
+                    st.session_state.slide_number = 1
+                    st.session_state.last_slide_start_time = None
+                    st.session_state.elapsed_time = 0
+                    st.session_state.start_time = None
+                    st.session_state.start_time_value = "00:00:00.000"
 
         # Stopwatch 섹션
         st.session_state.slide_number = st.number_input("Slide Number", min_value=1, value=st.session_state.slide_number, step=1, key="slide_input")
@@ -244,7 +209,7 @@ def lecture_timer_tab():
             function updateTheme() {{
                 const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
                 const timerDisplay = document.getElementById('timer-display');
-                if (timerDisplay690) {{
+                if (timerDisplay) {{
                     if (isDarkMode) {{
                         timerDisplay.style.backgroundColor = '#1a1a1a';
                         timerDisplay.style.color = '#ffffff';
@@ -346,16 +311,10 @@ def lecture_timer_tab():
             st.rerun()
 
         if st.button("기록 저장", use_container_width=True, disabled=not st.session_state.records):
-            date = datetime.now().strftime("%Y-%m-%d")
-            timestamp = datetime.now().strftime("%H%M%S")
-            file_name = f"{date}_{timestamp}.json"
-            components.html(f"""
-            <script>
-                window.parent.postMessage({{type: 'SAVE_RECORDS', data: {{lectureName: '{lecture_name}', fileName: '{file_name}', records: {json.dumps(st.session_state.records)}}}}}, '*');
-            </script>
-            """, height=0)
-            st.session_state.selected_json_file = file_name
-            st.success(f"JSON 파일이 브라우저에 저장되었습니다: {file_name}")
+            file_name = save_records(lecture_name, st.session_state.records)
+            if file_name:
+                st.session_state.selected_json_file = file_name
+                st.success(f"JSON 파일이 브라우저에 저장되었습니다: {file_name}")
 
     with right_col:
         st.subheader("Records")
