@@ -1,6 +1,7 @@
 import streamlit as st
 import boto3
 import json
+from s3_utils import save_json_to_s3, load_json_from_s3
 
 # Initialize S3 client
 s3_client = boto3.client(
@@ -10,30 +11,6 @@ s3_client = boto3.client(
     region_name=st.secrets.get("AWS_DEFAULT_REGION")
 )
 BUCKET_NAME = "slide-scribe-data"
-
-def save_json_to_s3(user_id, json_data):
-    """Save JSON data to S3 under user_id folder."""
-    try:
-        file_path = f"{user_id}/data.json"
-        s3_client.put_object(
-            Bucket=BUCKET_NAME,
-            Key=file_path,
-            Body=json.dumps(json_data, ensure_ascii=False).encode('utf-8')
-        )
-    except Exception as e:
-        st.error(f"Error saving to S3: {e}")
-
-def load_json_from_s3(user_id):
-    """Load JSON data from S3 for a user."""
-    try:
-        file_path = f"{user_id}/data.json"
-        response = s3_client.get_object(Bucket=BUCKET_NAME, Key=file_path)
-        return json.loads(response['Body'].read().decode('utf-8'))
-    except s3_client.exceptions.NoSuchKey:
-        return {}
-    except Exception as e:
-        st.error(f"Error loading from S3: {e}")
-        return {}
 
 def save_credentials(user_id, password):
     """Save user credentials to S3."""
@@ -77,7 +54,7 @@ def login_page():
                 if user_id in credentials and credentials[user_id] == password:
                     st.session_state.user_id = user_id
                     st.session_state.is_authenticated = True
-                    st.session_state.json_data = load_json_from_s3(user_id)
+                    st.session_state.json_data = load_json_from_s3(user_id, 'data.json')
                     st.success("Logged in successfully!")
                     st.rerun()
                 else:

@@ -1,6 +1,6 @@
 import streamlit as st
 import json
-from auth import save_json_to_s3, load_json_from_s3
+from s3_utils import save_json_to_s3, load_json_from_s3
 
 def lecture_timer_tab():
     """Render the Slide Timer tab with JSON data handling."""
@@ -18,7 +18,7 @@ def lecture_timer_tab():
             # Load from S3 for authenticated users
             json_data = load_json_from_s3(st.session_state.user_id, 'timer_data.json')
             if json_data:
-                st.session_state.timer_data = json_data
+                st.session_state.timer_data = json_data.get('timer_data', st.session_state.timer_data)
         except Exception as e:
             st.warning(f"Failed to load timer data from S3: {e}")
     else:
@@ -41,7 +41,7 @@ def lecture_timer_tab():
             # Save data based on authentication
             if st.session_state.get('is_authenticated', False) and st.session_state.get('user_id'):
                 try:
-                    save_json_to_s3(st.session_state.user_id, {'timer_data': st.session_state.timer_data}, 'timer_data.json')
+                    save_json_to_s3(st.session_state.user_id, st.session_state.timer_data, 'timer_data.json')
                 except Exception as e:
                     st.error(f"Failed to save timer data to S3: {e}")
             else:
@@ -59,7 +59,7 @@ def lecture_timer_tab():
         # Save on change
         if st.session_state.get('is_authenticated', False) and st.session_state.get('user_id'):
             try:
-                save_json_to_s3(st.session_state.user_id, {'timer_data': st.session_state.timer_data}, 'timer_data.json')
+                save_json_to_s3(st.session_state.user_id, st.session_state.timer_data, 'timer_data.json')
             except Exception as e:
                 st.error(f"Failed to save timer data to S3: {e}")
 
