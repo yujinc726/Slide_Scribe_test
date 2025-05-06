@@ -1,6 +1,7 @@
 import streamlit as st
 import boto3
 import json
+import os
 from slide_timer import lecture_timer_tab
 from srt_parser import srt_parser_tab
 from settings import settings_tab
@@ -50,15 +51,7 @@ st.markdown("""
         padding: 20px;
         border-radius: 10px;
         max-width: 400px;
-        margin: 20px auto;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    }
-    /* Hide tabs during login */
-    .stTabs {
-        display: none;
-    }
-    .main-content {
-        display: block;
+        margin: 0 auto;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -70,7 +63,7 @@ s3_client = boto3.client(
     aws_secret_access_key=st.secrets.get("AWS_SECRET_ACCESS_KEY"),
     region_name=st.secrets.get("AWS_DEFAULT_REGION")
 )
-BUCKET_NAME = "slide-scribe-data"  # Replace with your bucket name
+BUCKET_NAME = "slide-scribe-data"
 
 def initialize_session_state():
     """Initialize session state variables."""
@@ -135,94 +128,88 @@ def load_credentials():
 
 def login_page():
     """Render login and signup interface."""
-    # Force centered layout for login page
-    with st.container():
-        st.markdown("<div class='login-container'>", unsafe_allow_html=True)
-        st.subheader("Login or Sign Up")
-        
-        # Tabs for Login and Signup
-        login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
-        
-        with login_tab:
-            user_id = st.text_input("User ID", key="login_user_id")
-            password = st.text_input("Password", type="password", key="login_password")
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                if st.button("Login"):
-                    credentials = load_credentials()
-                    if user_id in credentials and credentials[user_id] == password:
-                        st.session_state.user_id = user_id
-                        st.session_state.is_authenticated = True
-                        st.session_state.json_data = load_json_from_s3(user_id)
-                        st.success("Logged in successfully!")
-                        st.rerun()
-                    else:
-                        st.error("Invalid credentials")
-            with col2:
-                if st.button("Guest Login"):
-                    st.session_state.user_id = "guest"
-                    st.session_state.is_authenticated = False
-                    st.session_state.json_data = {}
-                    st.success("Logged in as guest")
-                    st.rerun()
-        
-        with signup_tab:
-            new_user_id = st.text_input("New User ID", key="signup_user_id")
-            new_password = st.text_input("New Password", type="password", key="signup_password")
-            if st.button("Sign Up"):
+    st.markdown("<div class='login-container'>", unsafe_allow_html=True)
+    st.subheader("Login or Sign Up")
+    
+    # Tabs for Login and Signup
+    login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
+    
+    with login_tab:
+        user_id = st.text_input("User ID", key="login_user_id")
+        password = st.text_input("Password", type="password", key="login_password")
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("Login"):
                 credentials = load_credentials()
-                if new_user_id in credentials:
-                    st.error("User ID already exists")
-                elif new_user_id and new_password:
-                    save_credentials(new_user_id, new_password)
-                    st.success("Signed up successfully! Please log in.")
+                if user_id in credentials and credentials[user_id] == password:
+                    st.session_state.user_id = user_id
+                    st.session_state.is_authenticated = True
+                    st.session_state.json_data = load_json_from_s3(user_id)
+                    st.success("Logged in successfully!")
+                    st.rerun()
                 else:
-                    st.error("Please fill in all fields")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+                    st.error("Invalid credentials")
+        with col2:
+            if st.button("Guest Login"):
+                st.session_state.user_id = "guest"
+                st.session_state.is_authenticated = False
+                st.session_state.json_data = {}
+                st.success("Logged in as guest")
+                st.rerun()
+    
+    with signup_tab:
+        new_user_id = st.text_input("New User ID", key="signup_user_id")
+        new_password = st.text_input("New Password", type="password", key="signup_password")
+        if st.button("Sign Up"):
+            credentials = load_credentials()
+            if new_user_id in credentials:
+                st.error("User ID already exists")
+            elif new_user_id and new_password:
+                save_credentials(new_user_id, new_password)
+                st.success("Signed up successfully! Please log in.")
+            else:
+                st.error("Please fill in all fields")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def main():
     try:
         initialize_session_state()
         
-        # Show login page if not authenticated or not guest
+        # Show login page if not authenticated
         if not st.session_state.is_authenticated and st.session_state.user_id != "guest":
             login_page()
             return
         
         # Main app interface
-        with st.container():
-            st.markdown("<div class='main-content'>", unsafe_allow_html=True)
-            st.title('Slide Scribe')
-            st.markdown('Made by 차유진')
+        st.title('Slide Scribe')
+        st.markdown('Made by 차유진')
+        
+        # Logout button
+        col1, col2 = st.columns([9, 1])
+        with col2:
+            if st.session_state.is_authenticated or st.session_state.user_id == "guest":
+                if st.button("Logout"):
+                    st.session_state.user_id = None
+                    st.session_state.is_authenticated = False
+                    st.session_state.json_data = {}
+                    st.rerun()
+        
+        # Tabs
+        tab1, tab2, tab3 = st.tabs(["⏱️ Slide Timer", "📜 SRT Parser", "⚙️ Settings"])
+        
+        with tab1:
+            lecture_timer_tab()
+        
+        with tab2:
+            srt_parser_tab()
             
-            # Logout button
-            col1, col2 = st.columns([9, 1])
-            with col2:
-                if st.session_state.is_authenticated or st.session_state.user_id == "guest":
-                    if st.button("Logout"):
-                        st.session_state.user_id = None
-                        st.session_state.is_authenticated = False
-                        st.session_state.json_data = {}
-                        st.rerun()
+        with tab3:
+            settings_tab()
             
-            # Tabs
-            tab1, tab2, tab3 = st.tabs(["⏱️ Slide Timer", "📜 SRT Parser", "⚙️ Settings"])
-            
-            with tab1:
-                lecture_timer_tab()
-            
-            with tab2:
-                srt_parser_tab()
-                
-            with tab3:
-                settings_tab()
-                
-            # Save JSON data for authenticated users
-            if st.session_state.is_authenticated:
-                save_json_to_s3(st.session_state.user_id, st.session_state.json_data)
-            
-            st.markdown("</div>", unsafe_allow_html=True)
+        # Save JSON data on tab interaction (example)
+        if st.session_state.is_authenticated:
+            save_json_to_s3(st.session_state.user_id, st.session_state.json_data)
         
     except Exception as e:
         st.error(f"Error in main function: {e}")
