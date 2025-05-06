@@ -1,6 +1,7 @@
 import streamlit as st
 import uuid
 import os
+import json
 
 # We use a small JS snippet (via streamlit_js_eval) to persist a random UUID in the
 # browser's localStorage. This value is unique per visitor and survives page
@@ -104,4 +105,80 @@ def user_timer_logs_dir() -> str:
         # On read-only or test environments we silently ignore failures – the
         # caller will deal with absence when attempting to write files.
         pass
-    return directory 
+    return directory
+
+
+# ---------------------------------------------------------------------------
+# Browser localStorage helpers for persisting JSON logs so that they survive
+# Streamlit Cloud container restarts.
+# ---------------------------------------------------------------------------
+
+
+def _ls_get_item(key: str):
+    if streamlit_js_eval is None:
+        return None
+    js = f"return window.localStorage.getItem({json.dumps(key)});"
+    return streamlit_js_eval(js_expressions=js, want_output=True, key=f"get_{key}")
+
+
+def _ls_set_item(key: str, value: str):
+    if streamlit_js_eval is None:
+        return
+    # value is already JSON-string encoded string
+    js = f"window.localStorage.setItem({json.dumps(key)}, {json.dumps(value)});"
+    streamlit_js_eval(js_expressions=js, want_output=False, key=f"set_{key}")
+
+
+def sync_browser_logs_to_server():
+    """Restore any JSON logs found in browser localStorage onto the ephemeral filesystem.
+
+    We store each log under the key pattern `sslog_<lecture>_<timestamp>.json`.
+    At app start, call this once so that server-side functions can continue to
+    work transparently even after container reboot.
+    """
+    if streamlit_js_eval is None:
+        return
+
+    if st.session_state.get("__logs_synced__"):
+        return
+
+    js_collect = """
+    const out = {};
+    Object.keys(window.localStorage).forEach(k => {
+        if (k.startsWith('sslog_') && k.endsWith('.json')) {
+            out[k] = window.localStorage.getItem(k);
+        }
+    });
+    return JSON.stringify(out);
+    """
+    data_json = streamlit_js_eval(js_expressions=js_collect, want_output=True, key="__collect_logs")
+    if not data_json:
+        st.session_state["__logs_synced__"] = True
+        return
+
+    try:
+        logs_dict = json.loads(data_json)
+    except Exception:
+        st.session_state["__logs_synced__"] = True
+        return
+
+    for key, value in logs_dict.items():
+        try:
+            parts = key[len('sslog_'):].rsplit('_', 1)  # ['lecture name', 'date_time.json']
+            lecture = parts[0]
+            filename = parts[1]
+        except Exception:
+            continue
+
+        lecture_dir = os.path.join(user_timer_logs_dir(), lecture)
+        os.makedirs(lecture_dir, exist_ok=True)
+        server_path = os.path.join(lecture_dir, filename)
+        if os.path.exists(server_path):
+            continue  # already restored
+        try:
+            with open(server_path, 'w', encoding='utf-8') as f:
+                f.write(value)
+        except Exception:
+            pass
+
+    st.session_state["__logs_synced__"] = True 

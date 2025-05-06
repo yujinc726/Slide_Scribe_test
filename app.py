@@ -2,6 +2,7 @@ import streamlit as st
 from slide_timer import lecture_timer_tab
 from srt_parser import srt_parser_tab
 from settings import settings_tab
+import utils
 
 st.set_page_config(
 page_title="Slide Scribe",
@@ -47,6 +48,8 @@ st.markdown("""
 
 def main():
     try:
+        # Restore any logs from browser localStorage into the ephemeral FS
+        utils.sync_browser_logs_to_server()
         
         # 세션 상태 초기화
         if 'result_df' not in st.session_state:

@@ -51,8 +51,17 @@ def save_records_to_json(lecture_name, records):
         
         file_path = f"{directory}/{date}_{timestamp}.json"
         
+        json_str = json.dumps(records, ensure_ascii=False, indent=2)
         with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(records, f, ensure_ascii=False, indent=2)
+            f.write(json_str)
+
+        # also save to browser localStorage so that it survives container reboot
+        try:
+            storage_key = f"sslog_{lecture_name}_{date}_{timestamp}.json"
+            utils._ls_set_item(storage_key, json_str)
+        except Exception:
+            pass
+
         return file_path
     except Exception as e:
         st.error(f"JSON 파일 저장 중 오류: {e}")
