@@ -32,25 +32,25 @@ def _obtain_user_id_from_browser() -> str:
         # local/scripts but not for real users.
         return str(uuid.uuid4())
 
-    js_code = """
-(function () {
-    let uid = window.localStorage.getItem('slideScribe_user_id');
-    if (!uid) {
-        if (window.crypto && window.crypto.randomUUID) {
-            uid = window.crypto.randomUUID();
-        } else {
-            // Very old browsers – generate a naive UUID
-            const s4 = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
-            uid = s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
-        }
-        window.localStorage.setItem('slideScribe_user_id', uid);
-    }
-    return uid;
-})()
-"""
-    user_id = streamlit_js_eval(js_expressions=js_code, want_output=True, key="__get_user_id")
-    # If the component failed to return a value we generate one server-side.
-    return user_id or str(uuid.uuid4())
+    # Step 1: try to read existing value without creating a new one
+    get_code = "return window.localStorage.getItem('slideScribe_user_id');"
+    stored = streamlit_js_eval(js_expressions=get_code, want_output=True, key="__get_uid")
+
+    if stored:
+        return stored
+
+    # Step 2: not found => create on Python side for authoritative value
+    new_uid = str(uuid.uuid4())
+
+    # Persist it to browser localStorage (fire-and-forget)
+    set_code = f"window.localStorage.setItem('slideScribe_user_id', '{new_uid}');"
+    try:
+        streamlit_js_eval(js_expressions=set_code, want_output=False, key="__set_uid")
+    except Exception:
+        # Even if JS bridge fails we still return the python-side uid.
+        pass
+
+    return new_uid
 
 
 def get_user_id() -> str:
