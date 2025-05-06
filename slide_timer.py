@@ -5,34 +5,22 @@ import os
 import pandas as pd
 import streamlit.components.v1 as components
 import glob
-import utils
-try:
-    from zoneinfo import ZoneInfo  # Python 3.9+
-    KST = ZoneInfo("Asia/Seoul")
-except Exception:
-    KST = None
+
+# ---- User-specific data management utilities ----
+from utils import (
+    save_timer_records,
+    list_timer_record_files,
+    load_timer_records,
+    get_timer_logs_dir,
+    load_lecture_names as utils_load_lecture_names,
+    save_lecture_names as utils_save_lecture_names,
+)
 
 def load_lecture_names():
-    """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
-    timer_logs_dir = utils.user_timer_logs_dir()
-    lectures = []
-    
-    if os.path.exists(timer_logs_dir):
-        for lecture_name in os.listdir(timer_logs_dir):
-            lecture_path = os.path.join(timer_logs_dir, lecture_name)
-            if os.path.isdir(lecture_path):
-                lectures.append(lecture_name)
-    
-    return lectures
+    return utils_load_lecture_names()
 
 def save_lecture_names(lecture_names):
-    """lecture_names.json에 강의 이름 목록 저장"""
-    lecture_names_file = "lecture_names.json"
-    try:
-        with open(lecture_names_file, 'w', encoding='utf-8') as f:
-            json.dump(lecture_names, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        st.error(f"강의 이름 저장 중 오류: {e}")
+    return utils_save_lecture_names(lecture_names)
 
 def ensure_directory(directory):
     """디렉토리가 존재하는지 확인하고 없으면 생성"""
@@ -43,25 +31,15 @@ def save_records_to_json(lecture_name, records):
     """타이머 기록을 JSON 파일로 저장"""
     try:
         #lecture_name = lecture_name.replace("/", "_").replace("\\", "_")
-        now = datetime.now(tz=KST) if KST else datetime.now()
-        date = now.strftime("%Y-%m-%d")
-        timestamp = now.strftime("%H%M%S")  # 24-hour format HHMMSS
-        directory = os.path.join(utils.user_timer_logs_dir(), lecture_name)
+        date = datetime.now().strftime("%Y-%m-%d")
+        timestamp = datetime.now().strftime("%H%M%S")  # 24-hour format HHMMSS
+        directory = os.path.join(get_timer_logs_dir(), lecture_name)
         ensure_directory(directory)
         
         file_path = f"{directory}/{date}_{timestamp}.json"
         
-        json_str = json.dumps(records, ensure_ascii=False, indent=2)
         with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(json_str)
-
-        # also save to browser localStorage so that it survives container reboot
-        try:
-            storage_key = f"sslog_{lecture_name}__{date}_{timestamp}.json"
-            utils._ls_set_item(storage_key, json_str)
-        except Exception:
-            pass
-
+            json.dump(records, f, ensure_ascii=False, indent=2)
         return file_path
     except Exception as e:
         st.error(f"JSON 파일 저장 중 오류: {e}")
@@ -79,9 +57,7 @@ def load_records_from_json(file_path):
 def get_existing_json_files(lecture_name):
     """강의에 해당하는 기존 JSON 파일 목록 반환"""
     #lecture_name = lecture_name.replace("/", "_").replace("\\", "_")
-    if not lecture_name:
-        return []
-    directory = os.path.join(utils.user_timer_logs_dir(), lecture_name)
+    directory = os.path.join(get_timer_logs_dir(), lecture_name)
     if os.path.exists(directory):
         json_files = glob.glob(f"{directory}/*.json")
         return sorted(json_files, reverse=True)  # 최신 파일이 먼저 오도록 정렬
@@ -155,7 +131,8 @@ def lecture_timer_tab():
                 st.session_state.selected_json_file = None
             else:
                 file_path = json_files[selected_index - 1]
-                records = load_records_from_json(file_path)
+                filename_only = os.path.basename(file_path)
+                records = load_timer_records(lecture_name, filename_only)
                 if records:
                     st.session_state.records = records
                     st.session_state.selected_json_file = file_path
@@ -376,13 +353,11 @@ def lecture_timer_tab():
 
         # JSON 저장
         if st.button("기록 저장", use_container_width=True, disabled=not st.session_state.records):
-            json_file_path = save_records_to_json(
-                lecture_name,
-                st.session_state.records
-            )
+            filename_saved = save_timer_records(lecture_name, st.session_state.records)
+            json_file_path = os.path.join(get_timer_logs_dir(), lecture_name, filename_saved)
             
             if json_file_path:
-                st.success(f"JSON 파일이 저장되었습니다: {os.path.basename(json_file_path)}")
+                st.success(f"JSON 파일이 저장되었습니다: {json_file_path}")
                 st.session_state.selected_json_file = json_file_path
 
     with right_col:

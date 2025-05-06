@@ -4,7 +4,14 @@ from datetime import datetime
 import streamlit as st
 import json
 import os
-import utils
+import tempfile
+
+from utils import (
+    get_timer_logs_dir,
+    list_timer_record_files,
+    load_timer_records,
+    SUPABASE_AVAILABLE,
+)
 
 def parse_srt_time(time_str):
     """SRT 및 CSV 시간 문자열을 초 단위로 변환"""
@@ -42,29 +49,14 @@ def read_srt_file(srt_content):
     return subtitles
 
 def get_available_lectures():
-    """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
-    timer_logs_dir = utils.user_timer_logs_dir()
-    lectures = []
-    
+    """Return list of lecture directories for current user."""
+    timer_logs_dir = get_timer_logs_dir()
     if os.path.exists(timer_logs_dir):
-        for lecture_name in os.listdir(timer_logs_dir):
-            lecture_path = os.path.join(timer_logs_dir, lecture_name)
-            if os.path.isdir(lecture_path):
-                lectures.append(lecture_name)
-    
-    return lectures
+        return [d for d in os.listdir(timer_logs_dir) if os.path.isdir(os.path.join(timer_logs_dir, d))]
+    return []
 
 def get_json_files_for_lecture(lecture_name):
-    """특정 강의 디렉토리에서 사용 가능한 JSON 파일 목록 가져오기"""
-    timer_logs_dir = os.path.join(utils.user_timer_logs_dir(), lecture_name)
-    json_files = []
-    
-    if os.path.exists(timer_logs_dir):
-        for file_name in os.listdir(timer_logs_dir):
-            if file_name.endswith('.json'):
-                json_files.append(file_name)
-    
-    return json_files
+    return list_timer_record_files(lecture_name)
 
 def load_json_file(json_path):
     """JSON 파일에서 타이머 기록 로드"""
@@ -160,7 +152,7 @@ def srt_parser_tab():
                     disabled=not selected_lecture
                 )
                 if selected_json_file:
-                    json_path = os.path.join(utils.user_timer_logs_dir(), selected_lecture, selected_json_file)
+                    selected_filename = selected_json_file  # base name
             else:
                 json_path = None
         else:
@@ -175,7 +167,19 @@ def srt_parser_tab():
                 st.error("JSON 파일을 선택해주세요.")
             else:
                 with st.spinner("Processing..."):
-                    st.session_state.result_df = process_files(srt_file, json_path)
+                    # Supabase → 다운로드 후 임시 파일 생성
+                    if SUPABASE_AVAILABLE:
+                        records = load_timer_records(selected_lecture, selected_filename)
+                        if not records:
+                            st.error("기록을 불러올 수 없습니다.")
+                            return
+                        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".json")
+                        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fp:
+                            json.dump(records, fp, ensure_ascii=False, indent=2)
+                    else:
+                        tmp_path = os.path.join(get_timer_logs_dir(), selected_lecture, selected_filename)
+
+                    st.session_state.result_df = process_files(srt_file, tmp_path)
     
     with col2:
         st.subheader("Parsed SRT")
