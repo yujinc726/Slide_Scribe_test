@@ -60,7 +60,7 @@ def initialize_firebase():
                 st.write('test')
             else:
                 # For local development, use JSON file
-                st.write('test')
+                st.write('test2')
                 cred = credentials.Certificate('slidescribe-firebase-adminsdk.json')
             firebase_admin.initialize_app(cred)
         except Exception as e:
