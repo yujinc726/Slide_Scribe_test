@@ -57,9 +57,22 @@ def initialize_firebase():
             # For Streamlit Cloud, use secrets
             st.write(st.secrets)
             if 'firebase' in st.secrets:
-                st.write('test1')
-                cred = credentials.Certificate(st.secrets['firebase'])
-                st.write(cred)
+                firebase_credentials = {
+                "type": st.secrets["firebase"]["type"],
+                "project_id": st.secrets["firebase"]["project_id"],
+                "private_key_id": st.secrets["firebase"]["private_key_id"],
+                "private_key": st.secrets["firebase"]["private_key"],
+                "client_email": st.secrets["firebase"]["client_email"],
+                "client_id": st.secrets["firebase"]["client_id"],
+                "auth_uri": st.secrets["firebase"]["auth_uri"],
+                "token_uri": st.secrets["firebase"]["token_uri"],
+                "auth_provider_x509_cert_url": st.secrets["firebase"]["auth_provider_x509_cert_url"],
+                "client_x509_cert_url": st.secrets["firebase"]["client_x509_cert_url"],
+                "universe_domain": st.secrets["firebase"]["universe_domain"]
+            }
+                firebase_credentials["private_key"] = firebase_credentials["private_key"].replace("\\n", "\n")
+                cred = credentials.Certificate(firebase_credentials)
+
                 
             else:
                 # For local development, use JSON file
