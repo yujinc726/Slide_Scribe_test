@@ -4,7 +4,7 @@ from datetime import datetime
 import streamlit as st
 import json
 import os
-from utils import user_timer_logs_dir
+import utils
 
 def parse_srt_time(time_str):
     """SRT 및 CSV 시간 문자열을 초 단위로 변환"""
@@ -43,7 +43,7 @@ def read_srt_file(srt_content):
 
 def get_available_lectures():
     """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
-    timer_logs_dir = user_timer_logs_dir()
+    timer_logs_dir = utils.user_timer_logs_dir()
     lectures = []
     
     if os.path.exists(timer_logs_dir):
@@ -56,7 +56,7 @@ def get_available_lectures():
 
 def get_json_files_for_lecture(lecture_name):
     """특정 강의 디렉토리에서 사용 가능한 JSON 파일 목록 가져오기"""
-    timer_logs_dir = os.path.join(user_timer_logs_dir(), lecture_name)
+    timer_logs_dir = os.path.join(utils.user_timer_logs_dir(), lecture_name)
     json_files = []
     
     if os.path.exists(timer_logs_dir):
@@ -160,7 +160,7 @@ def srt_parser_tab():
                     disabled=not selected_lecture
                 )
                 if selected_json_file:
-                    json_path = os.path.join(user_timer_logs_dir(), selected_lecture, selected_json_file)
+                    json_path = os.path.join(utils.user_timer_logs_dir(), selected_lecture, selected_json_file)
             else:
                 json_path = None
         else:

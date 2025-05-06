@@ -5,11 +5,11 @@ import os
 import pandas as pd
 import streamlit.components.v1 as components
 import glob
-from utils import user_timer_logs_dir
+import utils
 
 def load_lecture_names():
     """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
-    timer_logs_dir = user_timer_logs_dir()
+    timer_logs_dir = utils.user_timer_logs_dir()
     lectures = []
     
     if os.path.exists(timer_logs_dir):
@@ -40,7 +40,7 @@ def save_records_to_json(lecture_name, records):
         #lecture_name = lecture_name.replace("/", "_").replace("\\", "_")
         date = datetime.now().strftime("%Y-%m-%d")
         timestamp = datetime.now().strftime("%H%M%S")  # 24-hour format HHMMSS
-        directory = os.path.join(user_timer_logs_dir(), lecture_name)
+        directory = os.path.join(utils.user_timer_logs_dir(), lecture_name)
         ensure_directory(directory)
         
         file_path = f"{directory}/{date}_{timestamp}.json"
@@ -64,7 +64,7 @@ def load_records_from_json(file_path):
 def get_existing_json_files(lecture_name):
     """강의에 해당하는 기존 JSON 파일 목록 반환"""
     #lecture_name = lecture_name.replace("/", "_").replace("\\", "_")
-    directory = os.path.join(user_timer_logs_dir(), lecture_name)
+    directory = os.path.join(utils.user_timer_logs_dir(), lecture_name)
     if os.path.exists(directory):
         json_files = glob.glob(f"{directory}/*.json")
         return sorted(json_files, reverse=True)  # 최신 파일이 먼저 오도록 정렬
