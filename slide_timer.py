@@ -6,6 +6,11 @@ import pandas as pd
 import streamlit.components.v1 as components
 import glob
 import utils
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+    KST = ZoneInfo("Asia/Seoul")
+except Exception:
+    KST = None
 
 def load_lecture_names():
     """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
@@ -38,8 +43,9 @@ def save_records_to_json(lecture_name, records):
     """타이머 기록을 JSON 파일로 저장"""
     try:
         #lecture_name = lecture_name.replace("/", "_").replace("\\", "_")
-        date = datetime.now().strftime("%Y-%m-%d")
-        timestamp = datetime.now().strftime("%H%M%S")  # 24-hour format HHMMSS
+        now = datetime.now(tz=KST) if KST else datetime.now()
+        date = now.strftime("%Y-%m-%d")
+        timestamp = now.strftime("%H%M%S")  # 24-hour format HHMMSS
         directory = os.path.join(utils.user_timer_logs_dir(), lecture_name)
         ensure_directory(directory)
         
@@ -367,7 +373,7 @@ def lecture_timer_tab():
             )
             
             if json_file_path:
-                st.success(f"JSON 파일이 저장되었습니다: {json_file_path}")
+                st.success(f"JSON 파일이 저장되었습니다: {os.path.basename(json_file_path)}")
                 st.session_state.selected_json_file = json_file_path
 
     with right_col:
