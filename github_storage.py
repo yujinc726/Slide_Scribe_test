@@ -84,4 +84,36 @@ def save_json(user_id: str, lecture: str, filename: str, data):
             repo.create_file(path, message, raw)
         except Exception:
             return False
+    return True
+
+
+# -------- global file helpers --------
+
+
+def load_global_json(filename: str):
+    repo = _get_repo()
+    if repo is None:
+        return None
+    try:
+        file_content = repo.get_contents(filename)
+        raw = base64.b64decode(file_content.content).decode()
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
+def save_global_json(filename: str, data):
+    repo = _get_repo()
+    if repo is None:
+        return False
+    raw = json.dumps(data, ensure_ascii=False, indent=2)
+    message = f"{filename} updated {datetime.utcnow().isoformat()}"
+    try:
+        existing = repo.get_contents(filename)
+        repo.update_file(filename, message, raw, existing.sha)
+    except Exception:
+        try:
+            repo.create_file(filename, message, raw)
+        except Exception:
+            return False
     return True 

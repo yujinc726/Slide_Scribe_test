@@ -2,6 +2,7 @@ import streamlit as st
 from slide_timer import lecture_timer_tab
 from srt_parser import srt_parser_tab
 from settings import settings_tab
+from auth import validate_user, register_user
 
 st.set_page_config(
 page_title="Slide Scribe",
@@ -47,13 +48,41 @@ st.markdown("""
 
 def main():
     try:
-        # 사용자 ID 입력 (sidebar)
+        # 로그인 상태 관리
         if 'user_id' not in st.session_state:
-            st.session_state.user_id = ""
-        st.sidebar.text_input("User ID", key="user_id", help="Enter your unique ID to keep data separate")
+            st.session_state.user_id = None
 
-        if not st.session_state.user_id:
-            st.info("Please enter your User ID in the left sidebar to start.")
+        def login_form():
+            with st.form("login_form"):
+                st.subheader("Login")
+                username = st.text_input("Username")
+                password = st.text_input("Password", type="password")
+                submitted = st.form_submit_button("Login")
+            if submitted:
+                if validate_user(username, password):
+                    st.session_state.user_id = username
+                    st.success("Login successful!")
+                else:
+                    st.error("Invalid credentials")
+
+        def register_form():
+            with st.form("register_form"):
+                st.subheader("Register")
+                username = st.text_input("Username", key="reg_user")
+                password = st.text_input("Password", type="password", key="reg_pass")
+                submitted = st.form_submit_button("Register")
+            if submitted:
+                if register_user(username, password):
+                    st.success("Registration successful. Please log in.")
+                else:
+                    st.error("Username already exists.")
+
+        if st.session_state.user_id is None:
+            auth_tab = st.sidebar.radio("Auth", ["Login", "Register"])
+            if auth_tab == "Login":
+                login_form()
+            else:
+                register_form()
             return
         
         # 세션 상태 초기화

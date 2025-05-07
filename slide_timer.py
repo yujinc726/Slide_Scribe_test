@@ -59,7 +59,8 @@ def load_records_from_json(file_path_or_ref):
     if file_path_or_ref is None:
         return []
     if file_path_or_ref.startswith("github://"):
-        _, lecture, filename = file_path_or_ref.split("/", 2)[-3:]
+        path_part = file_path_or_ref.replace("github://", "", 1)
+        lecture, filename = path_part.split("/", 1)
         return load_json(_user_id(), lecture, filename)
     try:
         with open(file_path_or_ref, 'r', encoding='utf-8') as f:
