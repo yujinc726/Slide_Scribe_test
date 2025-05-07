@@ -3,10 +3,7 @@ import base64
 from datetime import datetime
 import streamlit as st
 
-try:
-    from github import Github
-except ImportError:
-    Github = None  # PyGithub 미설치 시 우회
+from github import Github
 
 
 def _get_repo():
