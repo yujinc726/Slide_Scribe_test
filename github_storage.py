@@ -1,5 +1,6 @@
 import json
 import base64
+import os
 from datetime import datetime
 import streamlit as st
 
@@ -10,15 +11,49 @@ except ImportError:
 
 
 def _get_repo():
-    """return PyGithub Repository object using secrets, or None if unavailable"""
-    token = st.secrets.get("GITHUB_TOKEN") if hasattr(st, "secrets") else None
-    repo_name = st.secrets.get("GITHUB_REPO") if hasattr(st, "secrets") else None
+    """Return PyGithub Repository object.
+
+    Priority of credential sources:
+    1. Streamlit Cloud secrets (``st.secrets``)
+    2. Environment variables (``GITHUB_TOKEN`` / ``GITHUB_REPO``)
+
+    If credentials (or the *PyGithub* package) are missing, or if the repository
+    cannot be accessed, ``None`` is returned so that callers can gracefully
+    fall back to local storage.
+    """
+
+    # --- fetch credentials from Streamlit secrets when available ---
+    token = None
+    repo_name = None
+    if hasattr(st, "secrets"):
+        try:
+            token = st.secrets.get("GITHUB_TOKEN")
+            repo_name = st.secrets.get("GITHUB_REPO")
+        except Exception:
+            # If st.secrets behaves like a mapping but raises errors upon access
+            # we simply ignore and fall back to environment variables.
+            pass
+
+    # --- environment variable fallback (useful for local execution) ---
+    token = token or os.getenv("GITHUB_TOKEN")
+    repo_name = repo_name or os.getenv("GITHUB_REPO")
+
+    # Ensure PyGithub is available and we have the required credentials.
     if not token or not repo_name or Github is None:
         return None
+
+    # Try to obtain the repository instance. Any exception here most likely
+    # indicates invalid credentials or a typo in the repository name.
     try:
         gh = Github(token)
         return gh.get_repo(repo_name)
     except Exception:
+        # For debugging purposes in a Streamlit app, emit a warning; swallow any
+        # errors if Streamlit is not initialised (e.g. during unit tests).
+        try:
+            st.warning("GitHub access failed – falling back to local storage.")
+        except Exception:
+            pass
         return None
 
 
