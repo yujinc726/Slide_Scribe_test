@@ -394,7 +394,7 @@ def lecture_timer_tab():
                 num_rows="dynamic",
                 use_container_width=True,
                 column_config={
-                    "slide_title": st.column_config.TextColumn("강의안명", help="강의안명"),
+                    "slide_title": st.column_config.TextColumn("Slide Title", help="강의안명"),
                     "slide_number": st.column_config.TextColumn("Slide Number", help="슬라이드 번호"),
                     "start_time": st.column_config.TextColumn("Start Time", help="시작 시간"),
                     "end_time": st.column_config.TextColumn("End Time", help="종료 시간"),
