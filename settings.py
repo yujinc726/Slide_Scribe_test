@@ -4,13 +4,28 @@ import os
 import shutil
 import pandas as pd
 import time
-from browser_store import (
-    load_lecture_names,
-    save_lecture_names,
-    list_record_ids,
-    load_records,
-    save_records,
-)
+
+def load_lecture_names():
+    """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
+    timer_logs_dir = "timer_logs"
+    lectures = []
+    
+    if os.path.exists(timer_logs_dir):
+        for lecture_name in os.listdir(timer_logs_dir):
+            lecture_path = os.path.join(timer_logs_dir, lecture_name)
+            if os.path.isdir(lecture_path):
+                lectures.append(lecture_name)
+    
+    return lectures
+
+def save_lecture_names(lecture_names):
+    """lecture_names.json에 강의 이름 목록 저장"""
+    lecture_names_file = "lecture_names.json"
+    try:
+        with open(lecture_names_file, 'w', encoding='utf-8') as f:
+            json.dump(lecture_names, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"강의 이름 저장 중 오류: {e}")
 
 def ensure_directory(directory):
     """디렉토리가 존재하는지 확인하고 없으면 생성"""
@@ -202,6 +217,8 @@ def manage_lectures():
                 if new_lecture not in st.session_state.lecture_names:
                     st.session_state.lecture_names.append(new_lecture)
                     save_lecture_names(st.session_state.lecture_names)
+                    # 디렉토리 생성
+                    ensure_directory(f"timer_logs/{new_lecture}")
                     st.rerun()
                     st.success(f"강의가 추가되었습니다: {new_lecture}")
                 else:
@@ -246,3 +263,6 @@ def settings_tab():
     """Settings 탭 구현"""
     with st.container():
         manage_lectures()
+    st.divider()
+    with st.container():
+        manage_json_files()

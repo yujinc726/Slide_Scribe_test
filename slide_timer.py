@@ -1,52 +1,51 @@
 import streamlit as st
 from datetime import datetime, timedelta
-import json
 import os
 import pandas as pd
 import streamlit.components.v1 as components
-import glob
-from browser_store import (
-    load_lecture_names,
-    save_lecture_names,
-    save_records,
-    load_records,
-    list_record_ids,
-)
+import json
+
+# Local-browser storage helpers
+from storage import save_records, load_records, list_record_keys
+
+def load_lecture_names():
+    """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
+    timer_logs_dir = "timer_logs"
+    lectures = []
+    
+    if os.path.exists(timer_logs_dir):
+        for lecture_name in os.listdir(timer_logs_dir):
+            lecture_path = os.path.join(timer_logs_dir, lecture_name)
+            if os.path.isdir(lecture_path):
+                lectures.append(lecture_name)
+    
+    return lectures
+
+def save_lecture_names(lecture_names):
+    """lecture_names.json에 강의 이름 목록 저장"""
+    lecture_names_file = "lecture_names.json"
+    try:
+        with open(lecture_names_file, 'w', encoding='utf-8') as f:
+            json.dump(lecture_names, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"강의 이름 저장 중 오류: {e}")
 
 def ensure_directory(directory):
     """디렉토리가 존재하는지 확인하고 없으면 생성"""
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-def save_records_to_json(lecture_name, records):
-    """타이머 기록을 JSON 파일로 저장"""
-    try:
-        #lecture_name = lecture_name.replace("/", "_").replace("\\", "_")
-        date = datetime.now().strftime("%Y-%m-%d")
-        timestamp = datetime.now().strftime("%H%M%S")  # 24-hour format HHMMSS
-        directory = f"timer_logs/{lecture_name}"
-        ensure_directory(directory)
-        
-        file_path = f"{directory}/{date}_{timestamp}.json"
-        
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(records, f, ensure_ascii=False, indent=2)
-        return file_path
-    except Exception as e:
-        st.error(f"JSON 파일 저장 중 오류: {e}")
-        return None
+# ---------------------
+# 기존 파일-저장 함수를 더 이상 사용하지 않고, storage.py 의 save_records 를 이용합니다.
+# ---------------------
 
-def load_records_from_json(file_path):
-    """JSON 파일에서 기록 로드"""
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        st.error(f"JSON 파일 로드 중 오류: {e}")
-        return []
+# localStorage 에서 읽기
+def load_records_from_key(key: str):
+    return load_records(key)
 
-def get_existing_record_ids(lecture_name):
-    return list_record_ids(lecture_name)
+# localStorage 키 목록 반환
+def get_existing_keys(lecture_name):
+    return list_record_keys(lecture_name)
 
 def lecture_timer_tab():
     """Slide Timer 탭 구현"""
@@ -73,8 +72,8 @@ def lecture_timer_tab():
         st.session_state.start_time_value = "00:00:00.000"
     if 'notes_input' not in st.session_state:
         st.session_state.notes_input = ""
-    if 'selected_record_id' not in st.session_state:
-        st.session_state.selected_record_id = None
+    if 'selected_json_file' not in st.session_state:
+        st.session_state.selected_json_file = None
 
     # 두 개의 주요 컬럼으로 레이아웃 구성
     left_col, right_col = st.columns([1, 2])
@@ -92,20 +91,23 @@ def lecture_timer_tab():
         if not st.session_state.lecture_names:
             st.info("Settings 탭에서 강의를 추가해주세요.")
         
-        # 기존 기록 선택 (LocalStorage)
-        record_ids = get_existing_record_ids(lecture_name)
-        record_options = ["새 기록 시작"] + record_ids
-        selected_rec = st.selectbox(
+        # 기존 기록(localStorage key) 선택
+        record_keys = get_existing_keys(lecture_name) if lecture_name else []
+
+        # 사용자에게는 timestamp(키의 마지막 부분) 만 보여 줍니다.
+        readable_labels = [k.split(":")[-1] for k in record_keys]
+        json_options = ["새 기록 시작"] + readable_labels
+        selected_json = st.selectbox(
             "기록 선택",
-            record_options,
+            json_options,
             key="json_file_select",
-            on_change=lambda: load_selected_record(record_ids, record_options),
+            on_change=lambda: load_selected_json(record_keys, json_options),
             disabled=st.session_state.timer_running
         )
 
-        def load_selected_record(record_ids, record_options):
-            """선택한 기록 로드 및 세션 상태 업데이트"""
-            selected_index = record_options.index(st.session_state.json_file_select)
+        def load_selected_json(record_keys, json_options):
+            """선택한 localStorage 기록 로드"""
+            selected_index = json_options.index(st.session_state.json_file_select)
             if selected_index == 0:  # 새 기록 시작
                 st.session_state.records = []
                 st.session_state.slide_number = 1
@@ -113,13 +115,13 @@ def lecture_timer_tab():
                 st.session_state.elapsed_time = 0
                 st.session_state.start_time = None
                 st.session_state.start_time_value = "00:00:00.000"
-                st.session_state.selected_record_id = None
+                st.session_state.selected_json_file = None
             else:
-                rec_id = record_ids[selected_index - 1]
-                records = load_records(lecture_name, rec_id)
+                key = record_keys[selected_index - 1]
+                records = load_records_from_key(key)
                 if records:
                     st.session_state.records = records
-                    st.session_state.selected_record_id = rec_id
+                    st.session_state.selected_json_file = key
                     # 마지막 슬라이드 번호 설정
                     last_slide = max([int(r["slide_number"]) for r in records], default=0)
                     st.session_state.slide_number = last_slide + 1
@@ -296,7 +298,7 @@ def lecture_timer_tab():
                 st.session_state.records = []
                 st.session_state.slide_number = 1
                 st.session_state.start_time_value = "00:00:00.000"
-                st.session_state.selected_record_id = None
+                st.session_state.selected_json_file = None
                 st.rerun()
 
         # Note 섹션
@@ -335,12 +337,15 @@ def lecture_timer_tab():
             st.session_state["notes_input"] = ""
             st.rerun()
 
-        # 기록 저장 (LocalStorage)
+        # JSON 저장
         if st.button("기록 저장", use_container_width=True, disabled=not st.session_state.records):
-            rec_id = save_records(lecture_name, st.session_state.records)
-            if rec_id:
-                st.success(f"로컬 브라우저에 저장되었습니다: {rec_id}")
-                st.session_state.selected_record_id = rec_id
+            key_saved = save_records(
+                lecture_name,
+                st.session_state.records
+            )
+            if key_saved:
+                st.success(f"기록이 저장되었습니다: {key_saved}")
+                st.session_state.selected_json_file = key_saved
 
     with right_col:
         # 기록된 시간 표시
