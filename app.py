@@ -84,7 +84,7 @@ def main():
 
         if st.session_state.user_id is None:
             auth_tab = st.tabs(["로그인", "회원가입"])
-            if auth_tab == "Login":
+            if auth_tab == "로그인":
                 login_form()
             else:
                 register_form()
