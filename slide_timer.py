@@ -8,27 +8,12 @@ import json
 # Local-browser storage helpers
 from storage import save_records, load_records, list_record_keys
 
-def load_lecture_names():
-    """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
-    timer_logs_dir = "timer_logs"
-    lectures = []
-    
-    if os.path.exists(timer_logs_dir):
-        for lecture_name in os.listdir(timer_logs_dir):
-            lecture_path = os.path.join(timer_logs_dir, lecture_name)
-            if os.path.isdir(lecture_path):
-                lectures.append(lecture_name)
-    
-    return lectures
+# Built-in
+import os
+import json
 
-def save_lecture_names(lecture_names):
-    """lecture_names.json에 강의 이름 목록 저장"""
-    lecture_names_file = "lecture_names.json"
-    try:
-        with open(lecture_names_file, 'w', encoding='utf-8') as f:
-            json.dump(lecture_names, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        st.error(f"강의 이름 저장 중 오류: {e}")
+# local-storage helpers
+from storage import get_lecture_names as load_lecture_names, save_lecture_names  # re-export
 
 def ensure_directory(directory):
     """디렉토리가 존재하는지 확인하고 없으면 생성"""

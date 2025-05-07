@@ -6,7 +6,7 @@ import json
 import os
 
 # local browser storage helpers
-from storage import list_record_keys, load_records
+from storage import list_record_keys, load_records, get_lecture_names
 
 def parse_srt_time(time_str):
     """SRT 및 CSV 시간 문자열을 초 단위로 변환"""
@@ -43,18 +43,9 @@ def read_srt_file(srt_content):
     
     return subtitles
 
+# Lecture list from localStorage
 def get_available_lectures():
-    """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
-    timer_logs_dir = "timer_logs"
-    lectures = []
-    
-    if os.path.exists(timer_logs_dir):
-        for lecture_name in os.listdir(timer_logs_dir):
-            lecture_path = os.path.join(timer_logs_dir, lecture_name)
-            if os.path.isdir(lecture_path):
-                lectures.append(lecture_name)
-    
-    return lectures
+    return get_lecture_names()
 
 # 기존 파일 기반 함수 제거 -> localStorage 키 가져오기
 def get_record_keys_for_lecture(lecture_name):

@@ -48,4 +48,27 @@ def list_record_keys(lecture: str) -> List[str]:
     keys = [k for k in all_items.keys() if k.startswith(prefix)]
     # Sort so that the most recent (lexicographically larger timestamp) appears first
     keys.sort(reverse=True)
-    return keys 
+    return keys
+
+
+# ==========================================================
+# Lecture name list helpers (stored once per browser)
+# ==========================================================
+
+_LECTURES_KEY = f"{PREFIX}:__lectures__"
+
+
+def get_lecture_names() -> List[str]:
+    """Return the lecture name list stored in localStorage (empty list if none)."""
+    names = _ls.getItem(_LECTURES_KEY)
+    return names or []
+
+
+def save_lecture_names(names: List[str]):
+    """Persist lecture name list into localStorage."""
+    _ls.setItem(_LECTURES_KEY, names)
+
+
+def delete_record(key: str):
+    """Remove a saved record from localStorage."""
+    _ls.removeItem(key) 
