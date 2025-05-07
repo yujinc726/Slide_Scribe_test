@@ -4,26 +4,40 @@ from datetime import datetime
 import streamlit as st
 
 from github import Github
-from functools import lru_cache
 
 
-@lru_cache(maxsize=1)
+# --- Simple manual cache --------------------------------------------------
+# lru_cache 는 *실패한* 호출 결과(None)도 캐시해 버리기 때문에, 첫 호출 시 토큰이
+# 설정되지 않았거나 일시적인 오류가 나면 세션 내내 GitHub 를 사용할 수 없게 된다.
+#
+# 아래 방식은 "성공한 경우"에만 캐싱하므로 이런 문제를 피할 수 있다.
+
+_REPO_CACHE = None  # type: ignore
+
+
 def _get_repo():
-    """Return a cached PyGithub Repository object using Streamlit secrets.
+    """Return PyGithub Repository object, caching it after first success.
 
-    Using lru_cache ensures that we hit the GitHub REST API only once per
-    Streamlit session, which eliminates dozens of redundant network round-trips
-    that were happening on every rerun (e.g. when the user presses **Record Time**).
+    • 성공적으로 Repo 객체를 가져온 뒤에만 캐시한다.
+    • 첫 호출이 실패했더라도, 이후 토큰이 설정되면 재시도 가능하다.
     """
+
+    global _REPO_CACHE
+
+    # 이미 성공적으로 받아온 Repo 가 있으면 그대로 사용
+    if _REPO_CACHE is not None:
+        return _REPO_CACHE
+
     token = st.secrets.get("GITHUB_TOKEN") if hasattr(st, "secrets") else None
     repo_name = st.secrets.get("GITHUB_REPO") if hasattr(st, "secrets") else None
+
     if not token or not repo_name or Github is None:
         return None
 
     try:
         gh = Github(token)
-        # get_repo itself performs an HTTPS call; cache the result
-        return gh.get_repo(repo_name)
+        _REPO_CACHE = gh.get_repo(repo_name)
+        return _REPO_CACHE
     except Exception:
         return None
 
