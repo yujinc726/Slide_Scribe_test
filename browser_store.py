@@ -40,31 +40,38 @@ def _record_data_key(lecture: str, rec_id: str) -> str:
     return _k("records", lecture, rec_id)
 
 
-def list_record_ids(lecture: str) -> list[str]:
-    """Return list of record IDs (latest first) for given lecture."""
-    raw = _ls.getItem(_record_index_key(lecture))
+def list_record_ids(lecture: str | None) -> list[str]:
+    """Return list of record IDs (latest first) for given lecture.
+    If lecture is None (yet to be selected), return empty list to avoid errors."""
+    if not lecture:
+        return []
+    raw = _ls.getItem(_record_index_key(str(lecture)))
     return json.loads(raw) if raw else []
 
 
-def save_records(lecture: str, records: list[dict]) -> str:
+def save_records(lecture: str | None, records: list[dict]) -> str | None:
     """Save records list under a new timestamp ID and return that ID."""
+    if not lecture:
+        return None
     rec_id = time.strftime("%Y-%m-%d_%H%M%S")
     # 1) store the record data
     _ls.setItem(
-        _record_data_key(lecture, rec_id),
+        _record_data_key(str(lecture), rec_id),
         json.dumps(records, ensure_ascii=False)
     )
     # 2) update the index
-    ids = list_record_ids(lecture)
+    ids = list_record_ids(str(lecture))
     if rec_id not in ids:
         ids.insert(0, rec_id)
         _ls.setItem(
-            _record_index_key(lecture),
+            _record_index_key(str(lecture)),
             json.dumps(ids)
         )
     return rec_id
 
 
-def load_records(lecture: str, rec_id: str) -> list[dict]:
-    raw = _ls.getItem(_record_data_key(lecture, rec_id))
+def load_records(lecture: str | None, rec_id: str | None) -> list[dict]:
+    if not lecture or not rec_id:
+        return []
+    raw = _ls.getItem(_record_data_key(str(lecture), rec_id))
     return json.loads(raw) if raw else [] 
