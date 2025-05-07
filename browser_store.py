@@ -19,13 +19,13 @@ def _k(*parts: str) -> str:
 
 def load_lecture_names() -> list[str]:
     """Return list of lecture names stored in the browser (empty list if none)."""
-    raw = _ls.getItem(_k("lectures"), key="get_lectures")
+    raw = _ls.getItem(_k("lectures"))
     return json.loads(raw) if raw else []
 
 
 def save_lecture_names(names: list[str]):
     """Persist full lecture name list to browser storage."""
-    _ls.setItem(_k("lectures"), json.dumps(names), key=f"set_lectures_{uuid.uuid4()}")
+    _ls.setItem(_k("lectures"), json.dumps(names))
 
 
 # -----------------------------------------------------------------------------
@@ -42,7 +42,7 @@ def _record_data_key(lecture: str, rec_id: str) -> str:
 
 def list_record_ids(lecture: str) -> list[str]:
     """Return list of record IDs (latest first) for given lecture."""
-    raw = _ls.getItem(_record_index_key(lecture), key=f"get_idx_{lecture}")
+    raw = _ls.getItem(_record_index_key(lecture))
     return json.loads(raw) if raw else []
 
 
@@ -52,8 +52,7 @@ def save_records(lecture: str, records: list[dict]) -> str:
     # 1) store the record data
     _ls.setItem(
         _record_data_key(lecture, rec_id),
-        json.dumps(records, ensure_ascii=False),
-        key=f"set_rec_{uuid.uuid4()}"
+        json.dumps(records, ensure_ascii=False)
     )
     # 2) update the index
     ids = list_record_ids(lecture)
@@ -61,12 +60,11 @@ def save_records(lecture: str, records: list[dict]) -> str:
         ids.insert(0, rec_id)
         _ls.setItem(
             _record_index_key(lecture),
-            json.dumps(ids),
-            key=f"set_idx_{uuid.uuid4()}"
+            json.dumps(ids)
         )
     return rec_id
 
 
 def load_records(lecture: str, rec_id: str) -> list[dict]:
-    raw = _ls.getItem(_record_data_key(lecture, rec_id), key=f"get_rec_{rec_id}")
+    raw = _ls.getItem(_record_data_key(lecture, rec_id))
     return json.loads(raw) if raw else [] 
