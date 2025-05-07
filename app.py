@@ -83,10 +83,10 @@ def main():
                     st.error("Username already exists.")
 
         if st.session_state.user_id is None:
-            auth_tab = st.tabs(["로그인", "회원가입"])
-            if auth_tab == "로그인":
+            login_tab, signup_tab = st.tabs(["로그인", "회원가입"])
+            with login_tab:
                 login_form()
-            else:
+            with signup_tab:
                 register_form()
             return
         
