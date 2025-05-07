@@ -47,6 +47,8 @@ st.markdown("""
 
 
 def main():
+    st.title('Slide Scribe')
+    st.markdown('Made by 차유진')
     try:
         # 로그인 상태 관리
         if 'user_id' not in st.session_state:
@@ -81,7 +83,7 @@ def main():
                     st.error("Username already exists.")
 
         if st.session_state.user_id is None:
-            auth_tab = st.radio("Auth", ["Login", "Register"])
+            auth_tab = st.tabs(["로그인", "회원가입"])
             if auth_tab == "Login":
                 login_form()
             else:
@@ -93,8 +95,8 @@ def main():
             st.session_state.result_df = None
         if 'active_tab' not in st.session_state:
             st.session_state.active_tab = "SRT Parser"
-        st.title('Slide Scribe')
-        st.markdown('Made by 차유진')
+        # st.title('Slide Scribe')
+        # st.markdown('Made by 차유진')
         # 탭 생성
         tab1, tab2, tab3 = st.tabs(["⏱️ Slide Timer", "📜 SRT Parser", "⚙️ Settings"])
         
