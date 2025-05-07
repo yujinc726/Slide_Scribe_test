@@ -56,32 +56,31 @@ def main():
 
         def login_form():
             with st.form("login_form"):
-                st.subheader("Login")
+                #st.subheader("Login")
                 username = st.text_input("Username")
                 password = st.text_input("Password", type="password")
                 submitted = st.form_submit_button("Login")
             if submitted:
                 if validate_user(username, password):
                     st.session_state.user_id = username
-                    st.success("Login successful!")
                     st.rerun()
                 else:
-                    st.error("Invalid credentials")
+                    st.error("아이디 또는 비밀번호가 틀렸습니다.")
 
         def register_form():
             with st.form("register_form"):
-                st.subheader("Register")
+                #st.subheader("Register")
                 username = st.text_input("Username", key="reg_user")
                 password = st.text_input("Password", type="password", key="reg_pass")
                 password2 = st.text_input("Confirm Password", type="password", key="reg_pass2")
                 submitted = st.form_submit_button("Register")
             if submitted:
                 if password != password2:
-                    st.error("Passwords do not match.")
+                    st.error("비밀번호가 일치하지 않습니다.")
                 elif register_user(username, password):
-                    st.success("Registration successful. Please log in.")
+                    st.success("회원가입이 완료되었습니다. 로그인 해주세요.")
                 else:
-                    st.error("Username already exists.")
+                    st.error("이미 존재하는 아이디입니다.")
 
         if st.session_state.user_id is None:
             login_tab, signup_tab = st.tabs(["로그인", "회원가입"])
