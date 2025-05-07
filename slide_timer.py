@@ -63,7 +63,8 @@ def load_records_from_json(file_path):
 
 def get_existing_json_files(lecture_name):
     """강의에 해당하는 기존 JSON 파일 목록 반환"""
-    #lecture_name = lecture_name.replace("/", "_").replace("\\", "_")
+    if not lecture_name:  # 아직 강의가 선택되지 않은 경우
+        return []
     directory = os.path.join(get_user_base_dir(), lecture_name)
     if os.path.exists(directory):
         json_files = glob.glob(f"{directory}/*.json")

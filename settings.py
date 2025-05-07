@@ -35,6 +35,8 @@ def ensure_directory(directory):
 
 def get_json_files_for_lecture(lecture_name):
     """특정 강의 디렉토리에서 사용 가능한 JSON 파일 목록 가져오기"""
+    if not lecture_name:
+        return []
     timer_logs_dir = os.path.join(get_user_base_dir(), lecture_name)
     json_files = []
     
