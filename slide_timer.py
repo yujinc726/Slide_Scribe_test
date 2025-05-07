@@ -109,6 +109,8 @@ def lecture_timer_tab():
         st.session_state.notes_input = ""
     if 'selected_json_file' not in st.session_state:
         st.session_state.selected_json_file = None
+    if 'slide_title' not in st.session_state:
+        st.session_state.slide_title = ""
 
     # 두 개의 주요 컬럼으로 레이아웃 구성
     left_col, right_col = st.columns([1, 2])
@@ -182,6 +184,7 @@ def lecture_timer_tab():
 
         # Stopwatch 섹션
         # Slide Control 섹션
+        st.text_input("강의안명", key="slide_title")
         st.session_state.slide_number = st.number_input("Slide Number", min_value=1, value=st.session_state.slide_number, step=1, key="slide_input")
         # Start Time 입력 필드 (Pause 상태에서만 편집 가능)
         start_time_input = st.text_input(
@@ -331,6 +334,7 @@ def lecture_timer_tab():
                 st.session_state.slide_number = 1
                 st.session_state.start_time_value = "00:00:00.000"
                 st.session_state.selected_json_file = None
+                st.session_state.slide_title = ""
                 st.rerun()
 
         # Note 섹션
@@ -357,6 +361,7 @@ def lecture_timer_tab():
             # 기록 추가
             st.session_state.records.append({
                 "slide_number": str(st.session_state.slide_number),
+                "slide_title": st.session_state.slide_title,
                 "start_time": start_time,
                 "end_time": current_time_str,
                 "notes": st.session_state.notes
@@ -367,6 +372,7 @@ def lecture_timer_tab():
             st.session_state.slide_number += 1
             st.session_state.notes_input = ""
             st.session_state["notes_input"] = ""
+            st.session_state.slide_title = ""
             st.rerun()
 
         # JSON 저장
@@ -391,6 +397,7 @@ def lecture_timer_tab():
                 use_container_width=True,
                 column_config={
                     "slide_number": st.column_config.TextColumn("Slide Number", help="슬라이드 번호"),
+                    "slide_title": st.column_config.TextColumn("강의안명", help="강의안명"),
                     "start_time": st.column_config.TextColumn("Start Time", help="시작 시간"),
                     "end_time": st.column_config.TextColumn("End Time", help="종료 시간"),
                     "notes": st.column_config.TextColumn("Notes", help="메모")
