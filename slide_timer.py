@@ -226,7 +226,7 @@ def lecture_timer_tab():
                     st.session_state.start_time = None
                     st.session_state.start_time_value = "00:00:00.000"
 
-        title_col, number_col = st.columns([2, 1])
+        title_col, number_col = st.columns([3, 1])
         with title_col:
             st.text_input("Slide Title", key="slide_title")
         with number_col:
