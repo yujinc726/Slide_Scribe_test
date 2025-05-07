@@ -359,8 +359,8 @@ def lecture_timer_tab():
             
             # 기록 추가
             st.session_state.records.append({
-                "slide_number": str(st.session_state.slide_number),
                 "slide_title": st.session_state.slide_title,
+                "slide_number": str(st.session_state.slide_number),
                 "start_time": start_time,
                 "end_time": current_time_str,
                 "notes": st.session_state.notes
