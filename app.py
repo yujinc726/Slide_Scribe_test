@@ -44,6 +44,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxx"
+GITHUB_REPO  = "your-account/slide-scribe-data"  # owner/repo 형식
 
 def main():
     try:

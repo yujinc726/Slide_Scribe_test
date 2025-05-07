@@ -4,9 +4,29 @@ import os
 import shutil
 import pandas as pd
 import time
+from utils import get_user_base_dir
 
-# storage helpers
-from storage import get_lecture_names as load_lecture_names, save_lecture_names
+def load_lecture_names():
+    """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
+    timer_logs_dir = get_user_base_dir()
+    lectures = []
+    
+    if os.path.exists(timer_logs_dir):
+        for lecture_name in os.listdir(timer_logs_dir):
+            lecture_path = os.path.join(timer_logs_dir, lecture_name)
+            if os.path.isdir(lecture_path):
+                lectures.append(lecture_name)
+    
+    return lectures
+
+def save_lecture_names(lecture_names):
+    """lecture_names.json에 강의 이름 목록 저장"""
+    lecture_names_file = "lecture_names.json"
+    try:
+        with open(lecture_names_file, 'w', encoding='utf-8') as f:
+            json.dump(lecture_names, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"강의 이름 저장 중 오류: {e}")
 
 def ensure_directory(directory):
     """디렉토리가 존재하는지 확인하고 없으면 생성"""
@@ -15,7 +35,7 @@ def ensure_directory(directory):
 
 def get_json_files_for_lecture(lecture_name):
     """특정 강의 디렉토리에서 사용 가능한 JSON 파일 목록 가져오기"""
-    timer_logs_dir = os.path.join("timer_logs", lecture_name)
+    timer_logs_dir = os.path.join(get_user_base_dir(), lecture_name)
     json_files = []
     
     if os.path.exists(timer_logs_dir):
@@ -96,8 +116,8 @@ def manage_json_files():
                     # JSON 파일 검증
                     json_data = json.loads(uploaded_file_info["content"])
                     # 파일 저장 경로
-                    upload_path = os.path.join("timer_logs", selected_lecture, uploaded_file_info["name"])
-                    ensure_directory(os.path.join("timer_logs", selected_lecture))
+                    upload_path = os.path.join(get_user_base_dir(), selected_lecture, uploaded_file_info["name"])
+                    ensure_directory(os.path.join(get_user_base_dir(), selected_lecture))
                     # JSON 파일 저장
                     with open(upload_path, 'w', encoding='utf-8') as f:
                         json.dump(json_data, f, ensure_ascii=False, indent=2)
@@ -134,7 +154,7 @@ def manage_json_files():
                 col1, col2 = st.columns(2)
                 with col1:
                     # JSON 파일 다운로드
-                    json_path = os.path.join("timer_logs", selected_lecture, selected_json)
+                    json_path = os.path.join(get_user_base_dir(), selected_lecture, selected_json)
                     with open(json_path, 'r', encoding='utf-8') as f:
                         file_content = f.read()
                     st.download_button(
@@ -148,7 +168,7 @@ def manage_json_files():
                 with col2:
                     if st.button("기록 삭제", use_container_width=True, disabled=not selected_json):
                         try:
-                            json_path = os.path.join("timer_logs", selected_lecture, selected_json)
+                            json_path = os.path.join(get_user_base_dir(), selected_lecture, selected_json)
                             os.remove(json_path)
                             st.success(f"{selected_json} 파일이 삭제되었습니다.")
                             st.rerun()
@@ -187,7 +207,6 @@ def manage_json_files():
                     else:
                         st.error("파일 저장 중 오류가 발생했습니다.")
 
-# Lecture list manipulation using localStorage
 def manage_lectures():
     """강의 이름 관리 기능 구현"""
     st.subheader("강의 목록 관리")
@@ -200,7 +219,7 @@ def manage_lectures():
                     st.session_state.lecture_names.append(new_lecture)
                     save_lecture_names(st.session_state.lecture_names)
                     # 디렉토리 생성
-                    ensure_directory(f"timer_logs/{new_lecture}")
+                    ensure_directory(os.path.join(get_user_base_dir(), new_lecture))
                     st.rerun()
                     st.success(f"강의가 추가되었습니다: {new_lecture}")
                 else:
@@ -227,7 +246,7 @@ def manage_lectures():
         if st.button("강의 삭제", key="remove_lectures_settings"):
             if selected_lectures:
                 for lecture in selected_lectures:
-                    lecture_dir = f"timer_logs/{lecture}"
+                    lecture_dir = os.path.join(get_user_base_dir(), lecture)
                     # 디렉토리 삭제
                     if os.path.exists(lecture_dir):
                         try:
