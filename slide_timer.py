@@ -226,10 +226,11 @@ def lecture_timer_tab():
                     st.session_state.start_time = None
                     st.session_state.start_time_value = "00:00:00.000"
 
-        # Stopwatch 섹션
-        # Slide Control 섹션
-        st.text_input("강의안명", key="slide_title")
-        st.session_state.slide_number = st.number_input("Slide Number", min_value=1, value=st.session_state.slide_number, step=1, key="slide_input")
+        title_col, number_col = st.columns([2, 1])
+        with title_col:
+            st.text_input("Slide Title", key="slide_title")
+        with number_col:
+            st.session_state.slide_number = st.number_input("Slide Number", min_value=1, value=st.session_state.slide_number, step=1, key="slide_input")
         # Start Time 입력 필드 (Pause 상태에서만 편집 가능)
         start_time_input = st.text_input(
             "Start Time",
