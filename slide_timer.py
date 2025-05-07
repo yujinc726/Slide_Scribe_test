@@ -334,7 +334,6 @@ def lecture_timer_tab():
                 st.session_state.slide_number = 1
                 st.session_state.start_time_value = "00:00:00.000"
                 st.session_state.selected_json_file = None
-                st.session_state.slide_title = ""
                 st.rerun()
 
         # Note 섹션
@@ -372,7 +371,6 @@ def lecture_timer_tab():
             st.session_state.slide_number += 1
             st.session_state.notes_input = ""
             st.session_state["notes_input"] = ""
-            st.session_state.slide_title = ""
             st.rerun()
 
         # JSON 저장
