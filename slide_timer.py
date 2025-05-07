@@ -1,5 +1,6 @@
 import streamlit as st
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import json
 import os
 import pandas as pd
@@ -36,8 +37,9 @@ def ensure_directory(directory):
 
 def save_records_to_json(lecture_name, records):
     """저장 (GitHub 우선, 실패 시 로컬) 및 경로 반환"""
-    date = datetime.now().strftime("%Y-%m-%d")
-    timestamp = datetime.now().strftime("%H%M%S")
+    now_kst = datetime.now(tz=ZoneInfo("Asia/Seoul"))
+    date = now_kst.strftime("%Y-%m-%d")
+    timestamp = now_kst.strftime("%H%M%S")
     filename = f"{date}_{timestamp}.json"
     if github_enabled():
         if save_json(_user_id(), lecture_name, filename, records):
