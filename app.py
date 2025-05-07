@@ -70,15 +70,18 @@ def main():
                 st.subheader("Register")
                 username = st.text_input("Username", key="reg_user")
                 password = st.text_input("Password", type="password", key="reg_pass")
+                password2 = st.text_input("Confirm Password", type="password", key="reg_pass2")
                 submitted = st.form_submit_button("Register")
             if submitted:
-                if register_user(username, password):
+                if password != password2:
+                    st.error("Passwords do not match.")
+                elif register_user(username, password):
                     st.success("Registration successful. Please log in.")
                 else:
                     st.error("Username already exists.")
 
         if st.session_state.user_id is None:
-            auth_tab = st.sidebar.radio("Auth", ["Login", "Register"])
+            auth_tab = st.radio("Auth", ["Login", "Register"])
             if auth_tab == "Login":
                 login_form()
             else:
