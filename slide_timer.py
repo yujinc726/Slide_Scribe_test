@@ -6,19 +6,19 @@ import pandas as pd
 import streamlit.components.v1 as components
 import glob
 from utils import get_user_base_dir
+from github_storage import github_enabled, list_lectures, list_json, load_json, save_json
+
+def _user_id():
+    return st.session_state.get('user_id', 'anonymous')
 
 def load_lecture_names():
-    """lectures 디렉토리에서 사용 가능한 강의 목록 가져오기"""
+    """Return list of lectures for current user (GitHub or local)."""
+    if github_enabled():
+        return list_lectures(_user_id())
     timer_logs_dir = get_user_base_dir()
-    lectures = []
-    
-    if os.path.exists(timer_logs_dir):
-        for lecture_name in os.listdir(timer_logs_dir):
-            lecture_path = os.path.join(timer_logs_dir, lecture_name)
-            if os.path.isdir(lecture_path):
-                lectures.append(lecture_name)
-    
-    return lectures
+    if not os.path.exists(timer_logs_dir):
+        return []
+    return [d for d in os.listdir(timer_logs_dir) if os.path.isdir(os.path.join(timer_logs_dir, d))]
 
 def save_lecture_names(lecture_names):
     """lecture_names.json에 강의 이름 목록 저장"""
@@ -35,16 +35,18 @@ def ensure_directory(directory):
         os.makedirs(directory)
 
 def save_records_to_json(lecture_name, records):
-    """타이머 기록을 JSON 파일로 저장"""
+    """저장 (GitHub 우선, 실패 시 로컬) 및 경로 반환"""
+    date = datetime.now().strftime("%Y-%m-%d")
+    timestamp = datetime.now().strftime("%H%M%S")
+    filename = f"{date}_{timestamp}.json"
+    if github_enabled():
+        if save_json(_user_id(), lecture_name, filename, records):
+            return f"github://{lecture_name}/{filename}"
+    # fallback local
     try:
-        #lecture_name = lecture_name.replace("/", "_").replace("\\", "_")
-        date = datetime.now().strftime("%Y-%m-%d")
-        timestamp = datetime.now().strftime("%H%M%S")  # 24-hour format HHMMSS
         directory = os.path.join(get_user_base_dir(), lecture_name)
         ensure_directory(directory)
-        
-        file_path = f"{directory}/{date}_{timestamp}.json"
-        
+        file_path = os.path.join(directory, filename)
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(records, f, ensure_ascii=False, indent=2)
         return file_path
@@ -52,23 +54,29 @@ def save_records_to_json(lecture_name, records):
         st.error(f"JSON 파일 저장 중 오류: {e}")
         return None
 
-def load_records_from_json(file_path):
-    """JSON 파일에서 기록 로드"""
+def load_records_from_json(file_path_or_ref):
+    """Load records from local path or github ref (github://lecture/file)."""
+    if file_path_or_ref is None:
+        return []
+    if file_path_or_ref.startswith("github://"):
+        _, lecture, filename = file_path_or_ref.split("/", 2)[-3:]
+        return load_json(_user_id(), lecture, filename)
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path_or_ref, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except Exception as e:
-        st.error(f"JSON 파일 로드 중 오류: {e}")
+    except Exception:
+        st.error("JSON 파일 로드 중 오류")
         return []
 
 def get_existing_json_files(lecture_name):
-    """강의에 해당하는 기존 JSON 파일 목록 반환"""
-    if not lecture_name:  # 아직 강의가 선택되지 않은 경우
+    if not lecture_name:
         return []
+    if github_enabled():
+        return [f"github://{lecture_name}/{name}" for name in list_json(_user_id(), lecture_name)]
     directory = os.path.join(get_user_base_dir(), lecture_name)
     if os.path.exists(directory):
-        json_files = glob.glob(f"{directory}/*.json")
-        return sorted(json_files, reverse=True)  # 최신 파일이 먼저 오도록 정렬
+        files = glob.glob(f"{directory}/*.json")
+        return sorted(files, reverse=True)
     return []
 
 def lecture_timer_tab():

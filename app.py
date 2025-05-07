@@ -44,11 +44,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxx"
-GITHUB_REPO  = "your-account/slide-scribe-data"  # owner/repo 형식
 
 def main():
     try:
+        # 사용자 ID 입력 (sidebar)
+        if 'user_id' not in st.session_state:
+            st.session_state.user_id = ""
+        st.sidebar.text_input("User ID", key="user_id", help="Enter your unique ID to keep data separate")
+
+        if not st.session_state.user_id:
+            st.info("Please enter your User ID in the left sidebar to start.")
+            return
         
         # 세션 상태 초기화
         if 'result_df' not in st.session_state:
