@@ -64,6 +64,7 @@ def main():
                 if validate_user(username, password):
                     st.session_state.user_id = username
                     st.success("Login successful!")
+                    st.rerun()
                 else:
                     st.error("Invalid credentials")
 
