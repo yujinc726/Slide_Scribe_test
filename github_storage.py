@@ -4,16 +4,25 @@ from datetime import datetime
 import streamlit as st
 
 from github import Github
+from functools import lru_cache
 
 
+@lru_cache(maxsize=1)
 def _get_repo():
-    """return PyGithub Repository object using secrets, or None if unavailable"""
+    """Return a cached PyGithub Repository object using Streamlit secrets.
+
+    Using lru_cache ensures that we hit the GitHub REST API only once per
+    Streamlit session, which eliminates dozens of redundant network round-trips
+    that were happening on every rerun (e.g. when the user presses **Record Time**).
+    """
     token = st.secrets.get("GITHUB_TOKEN") if hasattr(st, "secrets") else None
     repo_name = st.secrets.get("GITHUB_REPO") if hasattr(st, "secrets") else None
     if not token or not repo_name or Github is None:
         return None
+
     try:
         gh = Github(token)
+        # get_repo itself performs an HTTPS call; cache the result
         return gh.get_repo(repo_name)
     except Exception:
         return None
