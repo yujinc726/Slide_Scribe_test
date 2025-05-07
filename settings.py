@@ -202,8 +202,6 @@ def manage_lectures():
                 if new_lecture not in st.session_state.lecture_names:
                     st.session_state.lecture_names.append(new_lecture)
                     save_lecture_names(st.session_state.lecture_names)
-                    # 디렉토리 생성
-                    ensure_directory(f"timer_logs/{new_lecture}")
                     st.rerun()
                     st.success(f"강의가 추가되었습니다: {new_lecture}")
                 else:
@@ -248,6 +246,3 @@ def settings_tab():
     """Settings 탭 구현"""
     with st.container():
         manage_lectures()
-    st.divider()
-    with st.container():
-        manage_json_files()
