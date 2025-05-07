@@ -57,7 +57,8 @@ def save_records(lecture: str | None, records: list[dict]) -> str | None:
     # 1) store the record data
     _ls.setItem(
         _record_data_key(str(lecture), rec_id),
-        json.dumps(records, ensure_ascii=False)
+        json.dumps(records, ensure_ascii=False),
+        key=f"set_rec_{uuid.uuid4()}"
     )
     # 2) update the index
     ids = list_record_ids(str(lecture))
@@ -65,7 +66,8 @@ def save_records(lecture: str | None, records: list[dict]) -> str | None:
         ids.insert(0, rec_id)
         _ls.setItem(
             _record_index_key(str(lecture)),
-            json.dumps(ids)
+            json.dumps(ids),
+            key=f"set_idx_{uuid.uuid4()}"
         )
     return rec_id
 
