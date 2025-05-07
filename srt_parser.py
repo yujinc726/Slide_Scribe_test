@@ -3,15 +3,7 @@ import re
 from datetime import datetime
 import streamlit as st
 import json
-import os
-import tempfile
-
-from utils import (
-    get_timer_logs_dir,
-    list_timer_record_files,
-    load_timer_records,
-    SUPABASE_AVAILABLE,
-)
+from browser_store import load_records, list_record_ids, load_lecture_names
 
 def parse_srt_time(time_str):
     """SRT 및 CSV 시간 문자열을 초 단위로 변환"""
@@ -49,33 +41,18 @@ def read_srt_file(srt_content):
     return subtitles
 
 def get_available_lectures():
-    """Return list of lecture directories for current user."""
-    timer_logs_dir = get_timer_logs_dir()
-    if os.path.exists(timer_logs_dir):
-        return [d for d in os.listdir(timer_logs_dir) if os.path.isdir(os.path.join(timer_logs_dir, d))]
-    return []
+    return load_lecture_names()
 
-def get_json_files_for_lecture(lecture_name):
-    return list_timer_record_files(lecture_name)
+# LocalStorage 기반 기록 ID 조회
+def get_record_ids_for_lecture(lecture_name):
+    return list_record_ids(lecture_name)
 
-def load_json_file(json_path):
-    """JSON 파일에서 타이머 기록 로드"""
-    try:
-        with open(json_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        st.error(f"JSON 파일 로드 중 오류: {e}")
-        return []
-
-def process_files(srt_file=None, json_path=None):
-    """JSON과 SRT 파일을 처리하여 슬라이드별로 자막을 합쳐 데이터프레임 반환"""
-    # 타이머 기록 읽기 (JSON 파일)
-    if json_path:
-        records = load_json_file(json_path)
-        df = pd.DataFrame(records)
-    else:
-        st.error("타이머 기록(JSON) 필요")
+def process_files(srt_file=None, records:list|None=None):
+    """타이머 기록(list of dict)과 SRT 파일을 합쳐 슬라이드별 자막을 반환"""
+    if records is None:
+        st.error("타이머 기록이 필요합니다")
         return None
+    df = pd.DataFrame(records)
     
     # SRT 파일 읽기 (Streamlit UploadedFile 처리)
     srt_content = srt_file.read().decode('utf-8')
@@ -137,49 +114,42 @@ def srt_parser_tab():
             )
             
             if selected_lecture:
-                json_files = get_json_files_for_lecture(selected_lecture)
-                if not json_files:
+                record_ids = get_record_ids_for_lecture(selected_lecture)
+                if not record_ids:
                     st.info("타이머 기록이 없습니다.")
             else:
-                json_files = None
-            if json_files:
-                selected_json_file = st.selectbox(
+                record_ids = None
+            if record_ids:
+                selected_record_id = st.selectbox(
                     "기록 선택",
-                    json_files,
+                    record_ids,
                     key="json_file_selector",
                     index=None,
                     placeholder="기록을 선택해주세요",
                     disabled=not selected_lecture
                 )
-                if selected_json_file:
-                    selected_filename = selected_json_file  # base name
+                if selected_record_id:
+                    selected_record_id_val = selected_record_id
+                else:
+                    selected_record_id_val = None
             else:
-                json_path = None
+                selected_record_id_val = None
         else:
             st.info("등록된 강의가 없습니다.")
-            json_path = None
+            selected_record_id_val = None
         
         # 처리 버튼
-        if st.button("Parse SRT", type='primary', use_container_width=True, disabled=not (srt_file and json_path)):
+        if st.button("Parse SRT", type='primary', use_container_width=True, disabled=not (srt_file and selected_record_id_val)):
             if srt_file is None:
                 st.error("SRT 파일을 업로드 해주세요.")
-            elif json_path is None:
-                st.error("JSON 파일을 선택해주세요.")
+            elif selected_record_id_val is None:
+                st.error("기록을 선택해주세요.")
             else:
                 with st.spinner("Processing..."):
-                    # Supabase → 다운로드 후 임시 파일 생성
-                    if SUPABASE_AVAILABLE:
-                        records = load_timer_records(selected_lecture, selected_filename)
-                        if not records:
-                            st.error("기록을 불러올 수 없습니다.")
-                            return
-                        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".json")
-                        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fp:
-                            json.dump(records, fp, ensure_ascii=False, indent=2)
-                    else:
-                        tmp_path = os.path.join(get_timer_logs_dir(), selected_lecture, selected_filename)
-
-                    st.session_state.result_df = process_files(srt_file, tmp_path)
+                    records = load_records(selected_lecture, selected_record_id_val)
+                    # JSON 비슷한 구조로 df 변환
+                    df_records = pd.DataFrame(records)
+                    st.session_state.result_df = process_files(srt_file, records)
     
     with col2:
         st.subheader("Parsed SRT")
@@ -194,4 +164,4 @@ def srt_parser_tab():
             else:
                 st.warning("추출된 내용이 없습니다.")
         else:
-            st.info("SRT 파일을 업로드하고, JSON 파일을 선택해주세요.")
+            st.info("SRT 파일을 업로드하고, 기록을 선택해주세요.")
